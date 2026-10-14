@@ -1,27 +1,19 @@
-{
-  "name": "agentart-ai",
-  "version": "0.1.0",
-  "private": true,
-  "scripts": {
-    "dev": "next dev",
-    "build": "next build",
-    "start": "next start",
-    "lint": "next lint"
-  },
-  "dependencies": {
-    "next": "14.2.5",
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1",
-    "lucide-react": "^0.427.0",
-    "clsx": "^2.1.1",
-    "tailwind-merge": "^2.4.0"
-  },
-  "devDependencies": {
-    "@types/node": "^20",
-    "@types/react": "^18",
-    "@types/react-dom": "^18",
-    "postcss": "^8",
-    "tailwindcss": "^3.4.1",
-    "typescript": "^5"
-  }
+import React from 'react';
+import './globals.css';
+
+export const metadata = {
+  title: 'AgentArt AI - Autonomous AI Art Director',
+  description: 'Powered by NVIDIA Nemotron & Nebius Token Factory',
+};
+
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  return (
+    <html lang="en">
+      <body>{children}</body>
+    </html>
+  );
 }
