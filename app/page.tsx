@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 
 export default function Home() {
   const [productUrl, setProductUrl] = useState('');
@@ -10,6 +10,9 @@ export default function Home() {
   const [campaignData, setCampaignData] = useState<any>(null);
   const [copied, setCopied] = useState(false);
   const [executionTime, setExecutionTime] = useState<string | null>(null);
+  const [renderedAdUrl, setRenderedAdUrl] = useState<string | null>(null);
+
+  const activeImage = selectedImage || productUrl || campaignData?.heroShot;
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -23,6 +26,78 @@ export default function Home() {
     }
   };
 
+  // Renderiza el escenario contextualizado cuando la IA devuelve los datos
+  useEffect(() => {
+    if (!campaignData || !activeImage) return;
+
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.src = activeImage;
+
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = 1000;
+      canvas.height = 1000;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+
+      // 1. Fondo de Escenario Contextualizado según la IA
+      const env = campaignData.environment || 'luxury_lounge';
+      let grad1 = '#1E1B4B', grad2 = '#0F172A', grad3 = '#020617';
+
+      if (env === 'neon_cyberpunk') {
+        grad1 = '#831843'; grad2 = '#4C0519'; grad3 = '#0F172A';
+      } else if (env === 'luxury_lounge') {
+        grad1 = '#451A03'; grad2 = '#1C1917'; grad3 = '#09090B';
+      }
+
+      const bg = ctx.createRadialGradient(500, 400, 100, 500, 500, 700);
+      bg.addColorStop(0, grad1);
+      bg.addColorStop(0.6, grad2);
+      bg.addColorStop(1, grad3);
+      ctx.fillStyle = bg;
+      ctx.fillRect(0, 0, 1000, 1000);
+
+      // 2. Luz de Foco Posterior (Soft Spotlight)
+      const spot = ctx.createRadialGradient(500, 400, 20, 500, 400, 350);
+      spot.addColorStop(0, 'rgba(255, 255, 255, 0.25)');
+      spot.addColorStop(1, 'rgba(255, 255, 255, 0)');
+      ctx.fillStyle = spot;
+      ctx.fillRect(0, 0, 1000, 1000);
+
+      // 3. Sombra de Pedestal en el Suelo
+      ctx.beginPath();
+      ctx.ellipse(500, 820, 280, 50, 0, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+      ctx.fill();
+
+      // 4. Dibujar Producto Escalado y Centrado
+      const scale = Math.min(600 / img.width, 600 / img.height);
+      const w = img.width * scale;
+      const h = img.height * scale;
+      const x = (1000 - w) / 2;
+      const y = 800 - h;
+      ctx.drawImage(img, x, y, w, h);
+
+      // 5. Marco & Banner de Campaña Publicitaria AI
+      ctx.fillStyle = 'rgba(16, 185, 129, 0.9)';
+      ctx.fillRect(50, 50, 220, 40);
+      ctx.font = 'bold 16px sans-serif';
+      ctx.fillStyle = '#000000';
+      ctx.fillText('AGENTART STUDIO', 70, 76);
+
+      if (campaignData.productCategory) {
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.15)';
+        ctx.fillRect(50, 910, 900, 50);
+        ctx.font = '14px sans-serif';
+        ctx.fillStyle = '#10B981';
+        ctx.fillText(`CAMPAIGN CATEGORY: ${campaignData.productCategory.toUpperCase()}`, 70, 940);
+      }
+
+      setRenderedAdUrl(canvas.toDataURL('image/png'));
+    };
+  }, [campaignData, activeImage]);
+
   const handleGenerate = async () => {
     const assetInput = selectedImage || productUrl;
     if (!assetInput) {
@@ -33,6 +108,7 @@ export default function Home() {
     const startTime = Date.now();
     setLoading(true);
     setCampaignData(null);
+    setRenderedAdUrl(null);
     setExecutionTime(null);
     setActiveStep(1);
 
@@ -81,8 +157,6 @@ export default function Home() {
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const activeImage = selectedImage || productUrl || campaignData?.heroShot;
-
   return (
     <div className="min-h-screen bg-[#0A0D14] text-white p-8">
       <header className="flex justify-between items-center mb-10 pb-4 border-b border-gray-800">
@@ -96,7 +170,7 @@ export default function Home() {
       </header>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        {/* Left Column: Input and Workflow */}
+        {/* Left Column */}
         <div className="space-y-6">
           <div className="bg-[#121722] p-6 rounded-xl border border-gray-800">
             <h2 className="text-lg font-semibold mb-2">Launch AI Campaign</h2>
@@ -189,7 +263,7 @@ export default function Home() {
           </div>
         </div>
 
-        {/* Right Column: Creative Output */}
+        {/* Right Column */}
         <div className="bg-[#121722] p-6 rounded-xl border border-gray-800 flex flex-col justify-between">
           <div>
             <div className="flex justify-between items-center mb-6">
@@ -202,7 +276,7 @@ export default function Home() {
             </div>
 
             <div className="grid grid-cols-2 gap-4 mb-6">
-              {/* Card 1: Original Asset Shot */}
+              {/* Asset Shot */}
               <div className="bg-[#0A0D14] border border-gray-800 rounded-lg p-3 text-center flex flex-col justify-between items-center min-h-[260px]">
                 <span className="text-xs text-gray-400 mb-1 block font-medium">Original Asset Shot</span>
                 <div className="w-full h-40 flex items-center justify-center p-2 rounded-md my-auto bg-white/5">
@@ -222,28 +296,19 @@ export default function Home() {
                 )}
               </div>
 
-              {/* Card 2: Studio Ad Visual (Blend mode removes white background completely) */}
+              {/* Contextual Rendered Studio Visual */}
               <div className="bg-[#0A0D14] border border-gray-800 rounded-lg p-3 text-center flex flex-col justify-between items-center min-h-[260px]">
-                <span className="text-xs text-gray-400 mb-1 block font-medium">Studio Ad Visual (AI Render)</span>
-                <div className="w-full h-40 flex items-center justify-center rounded-md my-auto relative overflow-hidden bg-gradient-to-tr from-amber-500/20 via-emerald-900/40 to-slate-900 border border-emerald-500/30 p-2">
-                  {campaignData ? (
-                    <>
-                      <img 
-                        src={activeImage} 
-                        alt="Studio Visual" 
-                        className="max-h-full max-w-full object-contain mix-blend-multiply filter contrast-125 saturate-120 drop-shadow-[0_10px_20px_rgba(0,0,0,0.8)]" 
-                      />
-                      <span className="absolute top-2 left-2 text-[9px] font-bold tracking-widest bg-emerald-500 text-black px-1.5 py-0.5 rounded uppercase">
-                        AI Studio Edit
-                      </span>
-                    </>
+                <span className="text-xs text-gray-400 mb-1 block font-medium">Studio Ad Visual (AI Context)</span>
+                <div className="w-full h-40 flex items-center justify-center rounded-md my-auto relative overflow-hidden p-1">
+                  {renderedAdUrl ? (
+                    <img src={renderedAdUrl} alt="Contextual Ad Visual" className="max-h-full max-w-full object-contain rounded-md shadow-2xl" />
                   ) : (
                     <p className="text-xs text-gray-600">[ Visual Generated via Nebius ]</p>
                   )}
                 </div>
-                {campaignData && (
+                {renderedAdUrl && (
                   <button
-                    onClick={() => handleDownload(activeImage, 'lifestyle-studio-ad.png')}
+                    onClick={() => handleDownload(renderedAdUrl, 'ai-studio-ad.png')}
                     className="w-full py-1.5 bg-gray-800 hover:bg-gray-700 text-xs text-emerald-400 rounded border border-gray-700 mt-2 font-medium"
                   >
                     Download Image ↓
