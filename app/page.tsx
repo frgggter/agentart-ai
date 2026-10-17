@@ -36,7 +36,7 @@ export default function Home() {
       }
     } catch (err) {
       console.error(err);
-      alert('Error connecting to the generation server.');
+      alert('Error connecting to generation server.');
     } finally {
       setLoading(false);
     }
@@ -45,7 +45,6 @@ export default function Home() {
   const handleExport = () => {
     if (!campaignData) return;
 
-    // Exportación nativa del paquete publicitario sin dependencias externas
     const exportBundle = {
       project: 'AgentArt AI Campaign',
       generatedAt: new Date().toISOString(),
@@ -63,9 +62,9 @@ export default function Home() {
   };
 
   const handlePublish = () => {
-    setPublishStatus('Connecting to Meta & Google Ads APIs...');
+    setPublishStatus('Connecting to Meta Ads Manager & Google Ads APIs...');
     setTimeout(() => setPublishStatus('Syncing creative assets & ad hooks...'), 1500);
-    setTimeout(() => setPublishStatus('Campaign Live! Dispatched to Meta Ads Manager & Google Ads.'), 3000);
+    setTimeout(() => setPublishStatus('Campaign Live! Dispatched to Meta Ads & Google Ads.'), 3000);
   };
 
   return (
@@ -181,29 +180,4 @@ export default function Home() {
 
             {publishStatus && (
               <div className="p-3 bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 rounded-lg text-xs mb-4 text-center font-mono animate-pulse">
-                {publishStatus}
-              </div>
-            )}
-          </div>
-
-          <div className="flex gap-4 pt-4 border-t border-gray-800">
-            <button
-              onClick={handleExport}
-              disabled={!campaignData}
-              className="flex-1 py-2.5 bg-gray-800 hover:bg-gray-700 text-sm font-semibold rounded-lg border border-gray-700 disabled:opacity-40"
-            >
-              Export Assets
-            </button>
-            <button
-              onClick={handlePublish}
-              disabled={!campaignData}
-              className="flex-1 py-2.5 bg-emerald-500 hover:bg-emerald-600 text-black text-sm font-semibold rounded-lg disabled:opacity-40"
-            >
-              Publish Campaign
-            </button>
-          </div>
-        </div>
-      </div>
-    </main>
-  );
-}
+                {publishStatus
