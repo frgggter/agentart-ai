@@ -80,7 +80,6 @@ export default function Home() {
       </header>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        {/* Left Column: Input & Agent Workflow */}
         <div className="space-y-6">
           <div className="bg-[#121722] p-6 rounded-xl border border-gray-800">
             <h2 className="text-lg font-semibold mb-2">Launch AI Campaign</h2>
@@ -133,5 +132,45 @@ export default function Home() {
           </div>
         </div>
 
-        {/* Right Column: Output & Action Controls */}
-        <div className="bg
+        <div className="bg-[#121722] p-6 rounded-xl border border-gray-800 flex flex-col justify-between">
+          <div>
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-lg font-semibold">Campaign Creative Output</h2>
+              {campaignData && (
+                <span className="px-3 py-1 bg-emerald-500/10 text-emerald-400 text-xs rounded-full border border-emerald-500/30">
+                  Completed in 8.4s
+                </span>
+              )}
+            </div>
+
+            <div className="grid grid-cols-2 gap-4 mb-6">
+              <div className="bg-[#0A0D14] border border-gray-800 rounded-lg p-3 text-center min-h-[220px] flex flex-col justify-center items-center overflow-hidden">
+                <span className="text-xs text-gray-400 mb-2 block">Hero Shot (Instagram)</span>
+                {campaignData?.images?.heroShot ? (
+                  <img src={campaignData.images.heroShot} alt="Hero Shot" className="w-full h-44 object-contain rounded-md" />
+                ) : (
+                  <p className="text-xs text-gray-600">[ Visual Generated via Nebius ]</p>
+                )}
+              </div>
+
+              <div className="bg-[#0A0D14] border border-gray-800 rounded-lg p-3 text-center min-h-[220px] flex flex-col justify-center items-center overflow-hidden">
+                <span className="text-xs text-gray-400 mb-2 block">Lifestyle Story</span>
+                {campaignData?.images?.lifestyleStory ? (
+                  <img src={campaignData.images.lifestyleStory} alt="Lifestyle Story" className="w-full h-44 object-contain rounded-md" />
+                ) : (
+                  <p className="text-xs text-gray-600">[ Visual Generated via Nebius ]</p>
+                )}
+              </div>
+            </div>
+
+            {campaignData?.hooks && (
+              <div className="bg-[#0A0D14] p-4 rounded-lg border border-gray-800 mb-4">
+                <h4 className="text-xs font-semibold text-emerald-400 uppercase mb-2">
+                  Generated Ad Hooks (NVIDIA Nemotron):
+                </h4>
+                <ul className="list-disc list-inside space-y-2 text-xs text-gray-300">
+                  {campaignData.hooks.map((hook: string, idx: number) => (
+                    <li key={idx}>{hook}</li>
+                  ))}
+                </ul>
+              </div>
