@@ -4,13 +4,33 @@ import { useState } from 'react';
 
 export default function Home() {
   const [productUrl, setProductUrl] = useState('');
+  const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [activeStep, setActiveStep] = useState(0);
   const [campaignData, setCampaignData] = useState<any>(null);
   const [publishStatus, setPublishStatus] = useState<string | null>(null);
 
+  // Convierte la imagen subida desde el ordenador a formato Base64 Data URL
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const base64String = reader.result as string;
+        setSelectedImage(base64String);
+        setProductUrl(''); // Limpia la URL si se sube un archivo local
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
   async function handleGenerate() {
-    if (!productUrl) return;
+    const assetInput = selectedImage || productUrl;
+    if (!assetInput) {
+      alert('Please enter a product URL or upload an image file.');
+      return;
+    }
+
     setLoading(true);
     setCampaignData(null);
     setPublishStatus(null);
@@ -24,7 +44,7 @@ export default function Home() {
       const res = await fetch('/api/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ productUrl }),
+        body: JSON.stringify({ productUrl: assetInput }),
       });
 
       const json = await res.json();
@@ -48,7 +68,7 @@ export default function Home() {
     const exportBundle = {
       project: 'AgentArt AI Campaign',
       generatedAt: new Date().toISOString(),
-      sourceAsset: productUrl,
+      sourceAsset: selectedImage ? 'Uploaded Local Image File' : productUrl,
       strategy: campaignData,
     };
 
@@ -80,23 +100,69 @@ export default function Home() {
       </header>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        {/* Left Column: Asset Input & Workflow */}
         <div className="space-y-6">
           <div className="bg-[#121722] p-6 rounded-xl border border-gray-800">
             <h2 className="text-lg font-semibold mb-2">Launch AI Campaign</h2>
             <p className="text-sm text-gray-400 mb-4">
-              Enter your product URL or asset image link to activate the multi-agent creative pipeline.
+              Upload a product photo or enter an image URL to activate the multi-agent creative pipeline.
             </p>
-            <input
-              type="text"
-              placeholder="https://images.puma.com/image/upload/.../Zapatillas-Speedcat-OG-unisex"
-              value={productUrl}
-              onChange={(e) => setProductUrl(e.target.value)}
-              className="w-full p-3 rounded-lg bg-[#0A0D14] border border-gray-700 text-white mb-4 focus:outline-none focus:border-emerald-500 text-sm"
-            />
+
+            {/* File Upload Control */}
+            <div className="mb-4">
+              <label className="block text-xs font-semibold text-gray-400 mb-2 uppercase">
+                Option 1: Upload Product Photo
+              </label>
+              <input
+                type="file"
+                accept="image/*"
+                onChange={handleFileUpload}
+                className="block w-full text-xs text-gray-400 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-emerald-500/10 file:text-emerald-400 hover:file:bg-emerald-500/20 cursor-pointer bg-[#0A0D14] p-2 rounded-lg border border-gray-800"
+              />
+            </div>
+
+            {selectedImage && (
+              <div className="mb-4 p-2 bg-[#0A0D14] rounded-lg border border-emerald-500/30 flex items-center gap-3">
+                <img src={selectedImage} alt="Preview" className="w-12 h-12 object-cover rounded" />
+                <div className="flex-1 overflow-hidden">
+                  <p className="text-xs text-emerald-400 font-medium">Image Loaded Ready</p>
+                  <button
+                    onClick={() => setSelectedImage(null)}
+                    className="text-[10px] text-red-400 underline"
+                  >
+                    Remove file
+                  </button>
+                </div>
+              </div>
+            )}
+
+            <div className="relative flex py-2 items-center mb-4">
+              <div className="flex-grow border-t border-gray-800"></div>
+              <span className="flex-shrink mx-4 text-xs text-gray-500 uppercase">Or</span>
+              <div className="flex-grow border-t border-gray-800"></div>
+            </div>
+
+            {/* URL Input Control */}
+            <div className="mb-4">
+              <label className="block text-xs font-semibold text-gray-400 mb-2 uppercase">
+                Option 2: Product Image URL
+              </label>
+              <input
+                type="text"
+                placeholder="https://images.puma.com/image/upload/.../Zapatillas-Speedcat-OG-unisex"
+                value={productUrl}
+                onChange={(e) => {
+                  setProductUrl(e.target.value);
+                  if (e.target.value) setSelectedImage(null);
+                }}
+                className="w-full p-3 rounded-lg bg-[#0A0D14] border border-gray-700 text-white focus:outline-none focus:border-emerald-500 text-sm"
+              />
+            </div>
+
             <button
               onClick={handleGenerate}
               disabled={loading}
-              className="w-full py-3 bg-emerald-500 hover:bg-emerald-600 font-semibold rounded-lg transition-all disabled:opacity-50 text-black"
+              className="w-full py-3 bg-emerald-500 hover:bg-emerald-600 font-semibold rounded-lg transition-all disabled:opacity-50 text-black mt-2"
             >
               {loading ? 'Executing Multi-Agent Pipeline...' : 'Generate Campaign →'}
             </button>
@@ -132,6 +198,7 @@ export default function Home() {
           </div>
         </div>
 
+        {/* Right Column: Output & Action Controls */}
         <div className="bg-[#121722] p-6 rounded-xl border border-gray-800 flex flex-col justify-between">
           <div>
             <div className="flex justify-between items-center mb-6">
