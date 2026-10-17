@@ -7,13 +7,13 @@ export async function POST(req: Request) {
 
     if (!apiKey) {
       return NextResponse.json(
-        { error: 'NEBIUS_API_KEY no está configurada.' },
+        { error: 'NEBIUS_API_KEY environment variable is not configured.' },
         { status: 500 }
       );
     }
 
-    const prompt = `You are the Lead Creative Strategy Agent for AgentArt AI. 
-Analyze this product link: ${productUrl}.
+    const prompt = `You are the Lead Creative Strategy Agent for AgentArt AI.
+Analyze this product asset URL: ${productUrl}.
 Generate 3 high-converting visual advertising hooks for a digital ad campaign.
 Return ONLY a raw JSON object with this exact structure (no markdown formatting, no codeblocks):
 {
@@ -37,8 +37,8 @@ Return ONLY a raw JSON object with this exact structure (no markdown formatting,
 
     if (!response.ok) {
       const errText = await response.text();
-      console.error('Error Nebius:', errText);
-      throw new Error(`Error Nebius (${response.status}): ${response.statusText}`);
+      console.error('Nebius API error:', errText);
+      throw new Error(`Nebius API error (${response.status}): ${response.statusText}`);
     }
 
     const data = await response.json();
@@ -47,17 +47,16 @@ Return ONLY a raw JSON object with this exact structure (no markdown formatting,
     const cleanJson = rawContent.replace(/```json/g, '').replace(/```/g, '').trim();
     const parsedResult = JSON.parse(cleanJson);
 
-    // Selección dinámica de imágenes basada en el producto o URL
-    const urlLower = (productUrl || '').toLowerCase();
-    const isShoes = urlLower.includes('shoes') || urlLower.includes('adidas') || urlLower.includes('nike') || urlLower.includes('zapatillas') || urlLower.includes('3425');
+    // If the input URL is a direct image (e.g. Puma Speedcat URL), reuse the original asset
+    const isDirectImage = /\.(jpg|jpeg|png|webp|gif)/i.test(productUrl) || productUrl.includes('/image/upload/');
+    
+    const heroImage = isDirectImage 
+      ? productUrl 
+      : 'https://images.unsplash.com/photo-1542291026-7eec264c27ff?auto=format&fit=crop&w=800&q=80';
 
-    const heroImage = isShoes 
-      ? 'https://images.unsplash.com/photo-1542291026-7eec264c27ff?auto=format&fit=crop&w=800&q=80'
-      : 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&w=800&q=80';
-
-    const lifestyleImage = isShoes
-      ? 'https://images.unsplash.com/photo-1552346154-21d32810aba3?auto=format&fit=crop&w=800&q=80'
-      : 'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?auto=format&fit=crop&w=800&q=80';
+    const lifestyleImage = isDirectImage 
+      ? productUrl 
+      : 'https://images.unsplash.com/photo-1552346154-21d32810aba3?auto=format&fit=crop&w=800&q=80';
 
     return NextResponse.json({
       success: true,
@@ -71,9 +70,9 @@ Return ONLY a raw JSON object with this exact structure (no markdown formatting,
     });
 
   } catch (error: any) {
-    console.error('Error en el flujo de agentes:', error);
+    console.error('Workflow error:', error);
     return NextResponse.json(
-      { error: error.message || 'Error al procesar la campaña con la IA' },
+      { error: error.message || 'Error processing creative campaign with NVIDIA Nemotron' },
       { status: 500 }
     );
   }
