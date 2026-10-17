@@ -12,9 +12,9 @@ export default function Home() {
   const [lifestyleCanvasUrl, setLifestyleCanvasUrl] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!campaignData?.images?.heroShot) return;
+    if (!campaignData?.images?.heroShot || typeof window === 'undefined') return;
 
-    const img = new Image();
+    const img = new window.Image();
     img.crossOrigin = 'anonymous';
     img.src = campaignData.images.heroShot;
 
@@ -58,8 +58,54 @@ export default function Home() {
     };
   }, [campaignData]);
 
+  const handleGenerate = async () => {
+    const assetInput = selectedImage || productUrl;
+    if (!assetInput) {
+      alert('Please enter a product URL or upload an image file.');
+      return;
+    }
+
+    setLoading(true);
+    setCampaignData(null);
+    setLifestyleCanvasUrl(null);
+    setActiveStep(1);
+
+    setTimeout(() => setActiveStep(2), 1500);
+    setTimeout(() => setActiveStep(3), 3500);
+    setTimeout(() => setActiveStep(4), 5500);
+
+    try {
+      const res = await fetch('/api/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ productUrl: assetInput }),
+      });
+
+      const json = await res.json();
+
+      if (json.success && json.data) {
+        setCampaignData(json.data);
+      } else {
+        alert(json.error || 'Failed to generate campaign assets.');
+      }
+    } catch (err) {
+      console.error(err);
+      alert('Error connecting to generation server.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleCopy = () => {
+    if (!campaignData?.hooks) return;
+    const textToCopy = campaignData.hooks.map((h: string, i: number) => `${i + 1}. ${h}`).join('\n');
+    navigator.clipboard.writeText(textToCopy);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
   return (
-    <main className="min-h-screen bg-[#0A0D14] text-white p-8">
+    <div className="min-h-screen bg-[#0A0D14] text-white p-8">
       <header className="flex justify-between items-center mb-10 pb-4 border-b border-gray-800">
         <div>
           <h1 className="text-2xl font-bold text-emerald-400">AgentArt AI</h1>
@@ -135,43 +181,7 @@ export default function Home() {
             </div>
 
             <button
-              onClick={async () => {
-                const assetInput = selectedImage || productUrl;
-                if (!assetInput) {
-                  alert('Please enter a product URL or upload an image file.');
-                  return;
-                }
-
-                setLoading(true);
-                setCampaignData(null);
-                setLifestyleCanvasUrl(null);
-                setActiveStep(1);
-
-                setTimeout(() => setActiveStep(2), 1500);
-                setTimeout(() => setActiveStep(3), 3500);
-                setTimeout(() => setActiveStep(4), 5500);
-
-                try {
-                  const res = await fetch('/api/generate', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ productUrl: assetInput }),
-                  });
-
-                  const json = await res.json();
-
-                  if (json.success && json.data) {
-                    setCampaignData(json.data);
-                  } else {
-                    alert(json.error || 'Failed to generate campaign assets.');
-                  }
-                } catch (err) {
-                  console.error(err);
-                  alert('Error connecting to generation server.');
-                } finally {
-                  setLoading(false);
-                }
-              }}
+              onClick={handleGenerate}
               disabled={loading}
               className="w-full py-3 bg-emerald-500 hover:bg-emerald-600 font-semibold rounded-lg transition-all disabled:opacity-50 text-black mt-2"
             >
@@ -184,53 +194,3 @@ export default function Home() {
               Autonomous Agent Workflow
             </h3>
             <div className="space-y-3">
-              {[
-                { name: 'Brand & Vision Agent', desc: 'Analyzing product style, color palette & visual composition' },
-                { name: 'Creative Strategy Agent', desc: 'Generating high-converting ad hooks with NVIDIA Nemotron 3.5' },
-                { name: 'Generative Design Agent', desc: 'Rendering HD multi-format campaign visuals on Nebius' },
-                { name: 'Brand Auditor Agent', desc: 'Validating brand consistency, guidelines & compliance' },
-              ].map((agent, i) => (
-                <div
-                  key={i}
-                  className={`p-3 rounded-lg border transition-all ${
-                    activeStep > i
-                      ? 'border-emerald-500/50 bg-emerald-500/5 text-white'
-                      : 'border-gray-800 bg-[#0A0D14] text-gray-500'
-                  }`}
-                >
-                  <div className="flex items-center gap-2">
-                    <span className={`w-2 h-2 rounded-full ${activeStep > i ? 'bg-emerald-400' : 'bg-gray-600'}`} />
-                    <span className="font-medium text-sm">{agent.name}</span>
-                  </div>
-                  <p className="text-xs text-gray-400 mt-1 pl-4">{agent.desc}</p>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-[#121722] p-6 rounded-xl border border-gray-800 flex flex-col justify-between">
-          <div>
-            <div className="flex justify-between items-center mb-6">
-              <h2 className="text-lg font-semibold">Campaign Creative Output</h2>
-              {campaignData && (
-                <span className="px-3 py-1 bg-emerald-500/10 text-emerald-400 text-xs rounded-full border border-emerald-500/30">
-                  Completed in 8.4s
-                </span>
-              )}
-            </div>
-
-            <div className="grid grid-cols-2 gap-4 mb-6">
-              <div className="bg-[#0A0D14] border border-gray-800 rounded-lg p-3 text-center flex flex-col justify-between items-center min-h-[260px]">
-                <span className="text-xs text-gray-400 mb-1 block font-medium">Original Asset Shot</span>
-                <div className="w-full h-40 flex items-center justify-center p-2 rounded-md my-auto">
-                  {campaignData?.images?.heroShot ? (
-                    <img src={campaignData.images.heroShot} alt="Hero Shot" className="max-h-full max-w-full object-contain rounded-md" />
-                  ) : (
-                    <p className="text-xs text-gray-600">[ Visual Generated via Nebius ]</p>
-                  )}
-                </div>
-                {campaignData?.images?.heroShot && (
-                  <button
-                    onClick={() => {
-                      const a = document
