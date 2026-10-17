@@ -8,9 +8,7 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [activeStep, setActiveStep] = useState(0);
   const [campaignData, setCampaignData] = useState<any>(null);
-  const [publishStatus, setPublishStatus] = useState<string | null>(null);
 
-  // Convierte la imagen subida desde el ordenador a formato Base64 Data URL
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
@@ -18,7 +16,7 @@ export default function Home() {
       reader.onloadend = () => {
         const base64String = reader.result as string;
         setSelectedImage(base64String);
-        setProductUrl(''); // Limpia la URL si se sube un archivo local
+        setProductUrl('');
       };
       reader.readAsDataURL(file);
     }
@@ -33,7 +31,6 @@ export default function Home() {
 
     setLoading(true);
     setCampaignData(null);
-    setPublishStatus(null);
     setActiveStep(1);
 
     setTimeout(() => setActiveStep(2), 1500);
@@ -66,9 +63,9 @@ export default function Home() {
     if (!campaignData) return;
 
     const exportBundle = {
-      project: 'AgentArt AI Campaign',
+      project: 'AgentArt AI Campaign Assets',
       generatedAt: new Date().toISOString(),
-      sourceAsset: selectedImage ? 'Uploaded Local Image File' : productUrl,
+      sourceAsset: selectedImage ? 'Uploaded Product Photo File' : productUrl,
       strategy: campaignData,
     };
 
@@ -79,12 +76,6 @@ export default function Home() {
     a.download = 'agentart-campaign-assets.json';
     a.click();
     URL.revokeObjectURL(url);
-  }
-
-  function handlePublish() {
-    setPublishStatus('Connecting to Meta Ads Manager & Google Ads APIs...');
-    setTimeout(() => setPublishStatus('Syncing creative assets & ad hooks...'), 1500);
-    setTimeout(() => setPublishStatus('Campaign Live! Dispatched to Meta Ads & Google Ads.'), 3000);
   }
 
   return (
@@ -100,7 +91,7 @@ export default function Home() {
       </header>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        {/* Left Column: Asset Input & Workflow */}
+        {/* Left Column: Input Controls & Workflow */}
         <div className="space-y-6">
           <div className="bg-[#121722] p-6 rounded-xl border border-gray-800">
             <h2 className="text-lg font-semibold mb-2">Launch AI Campaign</h2>
@@ -108,7 +99,6 @@ export default function Home() {
               Upload a product photo or enter an image URL to activate the multi-agent creative pipeline.
             </p>
 
-            {/* File Upload Control */}
             <div className="mb-4">
               <label className="block text-xs font-semibold text-gray-400 mb-2 uppercase">
                 Option 1: Upload Product Photo
@@ -142,7 +132,6 @@ export default function Home() {
               <div className="flex-grow border-t border-gray-800"></div>
             </div>
 
-            {/* URL Input Control */}
             <div className="mb-4">
               <label className="block text-xs font-semibold text-gray-400 mb-2 uppercase">
                 Option 2: Product Image URL
@@ -198,7 +187,7 @@ export default function Home() {
           </div>
         </div>
 
-        {/* Right Column: Output & Action Controls */}
+        {/* Right Column: Creative Output & Action Controls */}
         <div className="bg-[#121722] p-6 rounded-xl border border-gray-800 flex flex-col justify-between">
           <div>
             <div className="flex justify-between items-center mb-6">
@@ -211,19 +200,32 @@ export default function Home() {
             </div>
 
             <div className="grid grid-cols-2 gap-4 mb-6">
+              {/* Card 1: Studio Clean Clean Shot */}
               <div className="bg-[#0A0D14] border border-gray-800 rounded-lg p-3 text-center min-h-[220px] flex flex-col justify-center items-center overflow-hidden">
-                <span className="text-xs text-gray-400 mb-2 block">Hero Shot (Instagram)</span>
+                <span className="text-xs text-gray-400 mb-2 block font-medium">Hero Shot (Instagram)</span>
                 {campaignData?.images?.heroShot ? (
-                  <img src={campaignData.images.heroShot} alt="Hero Shot" className="w-full h-44 object-contain rounded-md" />
+                  <div className="w-full h-44 flex items-center justify-center bg-radial from-gray-800/40 to-transparent p-2 rounded-md">
+                    <img src={campaignData.images.heroShot} alt="Hero Shot" className="max-h-full max-w-full object-contain rounded-md drop-shadow-2xl" />
+                  </div>
                 ) : (
                   <p className="text-xs text-gray-600">[ Visual Generated via Nebius ]</p>
                 )}
               </div>
 
+              {/* Card 2: Editorial Ad Visual transformation */}
               <div className="bg-[#0A0D14] border border-gray-800 rounded-lg p-3 text-center min-h-[220px] flex flex-col justify-center items-center overflow-hidden">
-                <span className="text-xs text-gray-400 mb-2 block">Lifestyle Story</span>
+                <span className="text-xs text-gray-400 mb-2 block font-medium">Lifestyle Story (Editorial)</span>
                 {campaignData?.images?.lifestyleStory ? (
-                  <img src={campaignData.images.lifestyleStory} alt="Lifestyle Story" className="w-full h-44 object-contain rounded-md" />
+                  <div className="w-full h-44 flex items-center justify-center bg-gradient-to-tr from-amber-950/40 via-emerald-950/30 to-black p-2 rounded-md border border-emerald-500/20 relative overflow-hidden">
+                    <img 
+                      src={campaignData.images.lifestyleStory} 
+                      alt="Lifestyle Story" 
+                      className="max-h-full max-w-full object-contain rounded-md filter contrast-125 saturate-110 drop-shadow-[0_10px_20px_rgba(16,185,129,0.2)]" 
+                    />
+                    <span className="absolute bottom-2 right-2 text-[9px] uppercase tracking-widest bg-emerald-500/20 text-emerald-300 px-1.5 py-0.5 rounded border border-emerald-500/40 backdrop-blur-sm">
+                      AI Enhanced
+                    </span>
+                  </div>
                 ) : (
                   <p className="text-xs text-gray-600">[ Visual Generated via Nebius ]</p>
                 )}
@@ -242,28 +244,16 @@ export default function Home() {
                 </ul>
               </div>
             )}
-
-            {publishStatus && (
-              <div className="p-3 bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 rounded-lg text-xs mb-4 text-center font-mono animate-pulse">
-                {publishStatus}
-              </div>
-            )}
           </div>
 
-          <div className="flex gap-4 pt-4 border-t border-gray-800">
+          {/* Single clean export control */}
+          <div className="pt-4 border-t border-gray-800">
             <button
               onClick={handleExport}
               disabled={!campaignData}
-              className="flex-1 py-2.5 bg-gray-800 hover:bg-gray-700 text-sm font-semibold rounded-lg border border-gray-700 disabled:opacity-40"
+              className="w-full py-3 bg-emerald-500 hover:bg-emerald-600 text-black font-semibold rounded-lg transition-all disabled:opacity-40 text-sm"
             >
-              Export Assets
-            </button>
-            <button
-              onClick={handlePublish}
-              disabled={!campaignData}
-              className="flex-1 py-2.5 bg-emerald-500 hover:bg-emerald-600 text-black text-sm font-semibold rounded-lg disabled:opacity-40"
-            >
-              Publish Campaign
+              Export Campaign Assets (JSON)
             </button>
           </div>
         </div>
