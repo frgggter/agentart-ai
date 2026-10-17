@@ -13,18 +13,26 @@ export async function POST(req: Request) {
     }
 
     const isBase64 = (productUrl || '').startsWith('data:image/');
-    const promptDescription = isBase64 
-      ? 'User has uploaded a local product image file for this campaign.'
-      : `Analyze this product asset URL: ${productUrl}.`;
+    const promptAsset = isBase64 
+      ? 'A uploaded product photo asset.'
+      : `The product link or image URL: ${productUrl}.`;
 
     const prompt = `You are the Lead Creative Strategy Agent for AgentArt AI.
-${promptDescription}
-Generate 3 high-converting visual advertising hooks for a digital ad campaign.
+Analyze this product asset: ${promptAsset}
+
+Identify the specific product object, material, color, and unique design features (e.g., golden gorilla lamp, luxury decor, metallic finish, statement art).
+
+Generate 3 high-converting, highly specific ad hooks for digital marketing tailored DIRECTLY to this exact product.
+
 Return ONLY a raw JSON object with this exact structure (no markdown formatting, no codeblocks):
 {
-  "brandStyle": "Brief description of brand visual identity",
+  "brandStyle": "Specific description of product visual identity",
   "palette": ["#Hex1", "#Hex2", "#Hex3"],
-  "hooks": ["Hook 1 description", "Hook 2 description", "Hook 3 description"]
+  "hooks": [
+    "Hook 1 focusing on specific product features and aesthetic impact",
+    "Hook 2 targeting luxury lifestyle appeal and interior design placement",
+    "Hook 3 emphasizing bold statement piece value proposition"
+  ]
 }`;
 
     const response = await fetch('https://api.tokenfactory.nebius.com/v1/chat/completions', {
@@ -36,7 +44,7 @@ Return ONLY a raw JSON object with this exact structure (no markdown formatting,
       body: JSON.stringify({
         model: 'nvidia/Nemotron-3_5-Lightning',
         messages: [{ role: 'user', content: prompt }],
-        temperature: 0.6,
+        temperature: 0.7,
       }),
     });
 
@@ -52,24 +60,13 @@ Return ONLY a raw JSON object with this exact structure (no markdown formatting,
     const cleanJson = rawContent.replace(/```json/g, '').replace(/```/g, '').trim();
     const parsedResult = JSON.parse(cleanJson);
 
-    // Si es una imagen Base64 subida o una URL directa, la usamos directamente en las tarjetas creativas
-    const isDirectImage = isBase64 || /\.(jpg|jpeg|png|webp|gif)/i.test(productUrl) || (productUrl || '').includes('/image/upload/');
-    
-    const heroImage = isDirectImage 
-      ? productUrl 
-      : 'https://images.unsplash.com/photo-1542291026-7eec264c27ff?auto=format&fit=crop&w=800&q=80';
-
-    const lifestyleImage = isDirectImage 
-      ? productUrl 
-      : 'https://images.unsplash.com/photo-1552346154-21d32810aba3?auto=format&fit=crop&w=800&q=80';
-
     return NextResponse.json({
       success: true,
       data: {
         ...parsedResult,
         images: {
-          heroShot: heroImage,
-          lifestyleStory: lifestyleImage
+          heroShot: productUrl,
+          lifestyleStory: productUrl
         }
       }
     });
