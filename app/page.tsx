@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 
 export default function Home() {
   const [productUrl, setProductUrl] = useState('');
@@ -8,6 +8,8 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [activeStep, setActiveStep] = useState(0);
   const [campaignData, setCampaignData] = useState<any>(null);
+  const [copied, setCopied] = useState(false);
+  const [lifestyleCanvasUrl, setLifestyleCanvasUrl] = useState<string | null>(null);
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -22,6 +24,63 @@ export default function Home() {
     }
   };
 
+  // Procesa la imagen en un Canvas de HTML5 para renderizar un escenario publicitario real
+  useEffect(() => {
+    if (!campaignData?.images?.heroShot) return;
+
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.src = campaignData.images.heroShot;
+
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = 800;
+      canvas.height = 800;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+
+      // Dibujar fondo de estudio de lujo con gradiente radial de iluminación
+      const bgGradient = ctx.createRadialGradient(400, 350, 50, 400, 400, 500);
+      bgGradient.addColorStop(0, '#1F2937');
+      bgGradient.addColorStop(0.5, '#111827');
+      bgGradient.addColorStop(1, '#030712');
+      ctx.fillStyle = bgGradient;
+      ctx.fillRect(0, 0, 800, 800);
+
+      // Sombra proyectada del producto en el suelo
+      ctx.beginPath();
+      ctx.ellipse(400, 680, 220, 40, 0, 0, 2 * Math.PI);
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.65)';
+      ctx.filter = 'blur(15px)';
+      ctx.fill();
+      ctx.filter = 'none';
+
+      // Renderizar la foto del producto escalada y centrada
+      const scale = Math.min(520 / img.width, 520 / img.height);
+      const w = img.width * scale;
+      const h = img.height * scale;
+      const x = (800 - w) / 2;
+      const y = (660 - h);
+
+      ctx.drawImage(img, x, y, w, h);
+
+      // Superposición de texto y badge de edición publicitaria
+      ctx.fillStyle = 'rgba(16, 185, 129, 0.15)';
+      ctx.strokeStyle = 'rgba(16, 185, 129, 0.5)';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.roundRect(40, 40, 160, 36, 8);
+      ctx.fill();
+      ctx.stroke();
+
+      ctx.font = 'bold 13px sans-serif';
+      ctx.fillStyle = '#10B981';
+      ctx.fillText('STUDIO EDIT', 65, 63);
+
+      setLifestyleCanvasUrl(canvas.toDataURL('image/png'));
+    };
+  }, [campaignData]);
+
   async function handleGenerate() {
     const assetInput = selectedImage || productUrl;
     if (!assetInput) {
@@ -31,6 +90,7 @@ export default function Home() {
 
     setLoading(true);
     setCampaignData(null);
+    setLifestyleCanvasUrl(null);
     setActiveStep(1);
 
     setTimeout(() => setActiveStep(2), 1500);
@@ -59,24 +119,20 @@ export default function Home() {
     }
   }
 
-  function handleExport() {
-    if (!campaignData) return;
-
-    const exportBundle = {
-      project: 'AgentArt AI Campaign Assets',
-      generatedAt: new Date().toISOString(),
-      sourceAsset: selectedImage ? 'Uploaded Product Photo File' : productUrl,
-      strategy: campaignData,
-    };
-
-    const blob = new Blob([JSON.stringify(exportBundle, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
+  const downloadImage = (dataUrl: string, filename: string) => {
     const a = document.createElement('a');
-    a.href = url;
-    a.download = 'agentart-campaign-assets.json';
+    a.href = dataUrl;
+    a.download = filename;
     a.click();
-    URL.revokeObjectURL(url);
-  }
+  };
+
+  const copyToClipboard = () => {
+    if (!campaignData?.hooks) return;
+    const textToCopy = campaignData.hooks.map((h: string, i: number) => `${i + 1}. ${h}`).join('\n');
+    navigator.clipboard.writeText(textToCopy);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
 
   return (
     <main className="min-h-screen bg-[#0A0D14] text-white p-8">
@@ -91,7 +147,7 @@ export default function Home() {
       </header>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        {/* Left Column: Input Controls & Workflow */}
+        {/* Columna Izquierda: Input y Workflow */}
         <div className="space-y-6">
           <div className="bg-[#121722] p-6 rounded-xl border border-gray-800">
             <h2 className="text-lg font-semibold mb-2">Launch AI Campaign</h2>
@@ -116,10 +172,7 @@ export default function Home() {
                 <img src={selectedImage} alt="Preview" className="w-12 h-12 object-cover rounded" />
                 <div className="flex-1 overflow-hidden">
                   <p className="text-xs text-emerald-400 font-medium">Image Loaded Ready</p>
-                  <button
-                    onClick={() => setSelectedImage(null)}
-                    className="text-[10px] text-red-400 underline"
-                  >
+                  <button onClick={() => setSelectedImage(null)} className="text-[10px] text-red-400 underline">
                     Remove file
                   </button>
                 </div>
@@ -187,77 +240,11 @@ export default function Home() {
           </div>
         </div>
 
-        {/* Right Column: Creative Output & Action Controls */}
+        {/* Columna Derecha: Output y Descargas */}
         <div className="bg-[#121722] p-6 rounded-xl border border-gray-800 flex flex-col justify-between">
           <div>
             <div className="flex justify-between items-center mb-6">
               <h2 className="text-lg font-semibold">Campaign Creative Output</h2>
               {campaignData && (
                 <span className="px-3 py-1 bg-emerald-500/10 text-emerald-400 text-xs rounded-full border border-emerald-500/30">
-                  Completed in 8.4s
-                </span>
-              )}
-            </div>
-
-            <div className="grid grid-cols-2 gap-4 mb-6">
-              {/* Card 1: Studio Clean Clean Shot */}
-              <div className="bg-[#0A0D14] border border-gray-800 rounded-lg p-3 text-center min-h-[220px] flex flex-col justify-center items-center overflow-hidden">
-                <span className="text-xs text-gray-400 mb-2 block font-medium">Hero Shot (Instagram)</span>
-                {campaignData?.images?.heroShot ? (
-                  <div className="w-full h-44 flex items-center justify-center bg-radial from-gray-800/40 to-transparent p-2 rounded-md">
-                    <img src={campaignData.images.heroShot} alt="Hero Shot" className="max-h-full max-w-full object-contain rounded-md drop-shadow-2xl" />
-                  </div>
-                ) : (
-                  <p className="text-xs text-gray-600">[ Visual Generated via Nebius ]</p>
-                )}
-              </div>
-
-              {/* Card 2: Editorial Ad Visual transformation */}
-              <div className="bg-[#0A0D14] border border-gray-800 rounded-lg p-3 text-center min-h-[220px] flex flex-col justify-center items-center overflow-hidden">
-                <span className="text-xs text-gray-400 mb-2 block font-medium">Lifestyle Story (Editorial)</span>
-                {campaignData?.images?.lifestyleStory ? (
-                  <div className="w-full h-44 flex items-center justify-center bg-gradient-to-tr from-amber-950/40 via-emerald-950/30 to-black p-2 rounded-md border border-emerald-500/20 relative overflow-hidden">
-                    <img 
-                      src={campaignData.images.lifestyleStory} 
-                      alt="Lifestyle Story" 
-                      className="max-h-full max-w-full object-contain rounded-md filter contrast-125 saturate-110 drop-shadow-[0_10px_20px_rgba(16,185,129,0.2)]" 
-                    />
-                    <span className="absolute bottom-2 right-2 text-[9px] uppercase tracking-widest bg-emerald-500/20 text-emerald-300 px-1.5 py-0.5 rounded border border-emerald-500/40 backdrop-blur-sm">
-                      AI Enhanced
-                    </span>
-                  </div>
-                ) : (
-                  <p className="text-xs text-gray-600">[ Visual Generated via Nebius ]</p>
-                )}
-              </div>
-            </div>
-
-            {campaignData?.hooks && (
-              <div className="bg-[#0A0D14] p-4 rounded-lg border border-gray-800 mb-4">
-                <h4 className="text-xs font-semibold text-emerald-400 uppercase mb-2">
-                  Generated Ad Hooks (NVIDIA Nemotron):
-                </h4>
-                <ul className="list-disc list-inside space-y-2 text-xs text-gray-300">
-                  {campaignData.hooks.map((hook: string, idx: number) => (
-                    <li key={idx}>{hook}</li>
-                  ))}
-                </ul>
-              </div>
-            )}
-          </div>
-
-          {/* Single clean export control */}
-          <div className="pt-4 border-t border-gray-800">
-            <button
-              onClick={handleExport}
-              disabled={!campaignData}
-              className="w-full py-3 bg-emerald-500 hover:bg-emerald-600 text-black font-semibold rounded-lg transition-all disabled:opacity-40 text-sm"
-            >
-              Export Campaign Assets (JSON)
-            </button>
-          </div>
-        </div>
-      </div>
-    </main>
-  );
-}
+                  Completed in 8.
