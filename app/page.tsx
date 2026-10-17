@@ -42,48 +42,24 @@ export default function Home() {
     }
   };
 
-  const handleExport = async () => {
+  const handleExport = () => {
     if (!campaignData) return;
 
-    try {
-      // Dynamic JSZip import to trigger client-side ZIP download
-      const JSZip = (await import('jszip')).default;
-      const zip = new JSZip();
+    // Exportación nativa del paquete publicitario sin dependencias externas
+    const exportBundle = {
+      project: 'AgentArt AI Campaign',
+      generatedAt: new Date().toISOString(),
+      sourceAsset: productUrl,
+      strategy: campaignData,
+    };
 
-      // Download images as blobs
-      if (campaignData.images?.heroShot) {
-        const res = await fetch(campaignData.images.heroShot);
-        const blob = await res.blob();
-        zip.file('hero-shot-instagram.png', blob);
-      }
-
-      if (campaignData.images?.lifestyleStory) {
-        const res = await fetch(campaignData.images.lifestyleStory);
-        const blob = await res.blob();
-        zip.file('lifestyle-story.png', blob);
-      }
-
-      // Include JSON metadata
-      zip.file('campaign-strategy.json', JSON.stringify(campaignData, null, 2));
-
-      // Generate zip archive
-      const zipBlob = await zip.generateAsync({ type: 'blob' });
-      const url = URL.createObjectURL(zipBlob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'agentart-campaign-assets.zip';
-      a.click();
-      URL.revokeObjectURL(url);
-    } catch (err) {
-      console.error('Failed to create ZIP export:', err);
-      // Fallback to JSON download if CORS blocks image fetching
-      const blob = new Blob([JSON.stringify(campaignData, null, 2)], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'agentart-campaign-assets.json';
-      a.click();
-    }
+    const blob = new Blob([JSON.stringify(exportBundle, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'agentart-campaign-assets.json';
+    a.click();
+    URL.revokeObjectURL(url);
   };
 
   const handlePublish = () => {
@@ -105,7 +81,7 @@ export default function Home() {
       </header>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        {/* Left Column: Input and Agent Workflow */}
+        {/* Left Column: Input & Agent Workflow */}
         <div className="space-y-6">
           <div className="bg-[#121722] p-6 rounded-xl border border-gray-800">
             <h2 className="text-lg font-semibold mb-2">Launch AI Campaign</h2>
@@ -216,7 +192,7 @@ export default function Home() {
               disabled={!campaignData}
               className="flex-1 py-2.5 bg-gray-800 hover:bg-gray-700 text-sm font-semibold rounded-lg border border-gray-700 disabled:opacity-40"
             >
-              Export Assets (ZIP)
+              Export Assets
             </button>
             <button
               onClick={handlePublish}
