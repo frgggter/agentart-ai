@@ -47,23 +47,14 @@ Return ONLY a raw JSON object with this exact structure (no markdown formatting,
     const cleanJson = rawContent.replace(/```json/g, '').replace(/```/g, '').trim();
     const parsedResult = JSON.parse(cleanJson);
 
-    // Añadimos imágenes dinámicas de campaña de alta resolución
-    return NextResponse.json({
-      success: true,
-      data: {
-        ...parsedResult,
-        images: {
-          heroShot: 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&w=800&q=80',
-          lifestyleStory: 'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?auto=format&fit=crop&w=800&q=80'
-        }
-      }
-    });
+    // Selección dinámica de imágenes basada en el producto o URL
+    const urlLower = (productUrl || '').toLowerCase();
+    const isShoes = urlLower.includes('shoes') || urlLower.includes('adidas') || urlLower.includes('nike') || urlLower.includes('zapatillas') || urlLower.includes('3425');
 
-  } catch (error: any) {
-    console.error('Error en el flujo de agentes:', error);
-    return NextResponse.json(
-      { error: error.message || 'Error al procesar la campaña con la IA' },
-      { status: 500 }
-    );
-  }
-}
+    const heroImage = isShoes 
+      ? 'https://images.unsplash.com/photo-1542291026-7eec264c27ff?auto=format&fit=crop&w=800&q=80'
+      : 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&w=800&q=80';
+
+    const lifestyleImage = isShoes
+      ? 'https://images.unsplash.com/photo-1552346154-21d32810aba3?auto=format&fit=crop&w=800&q=80'
+      : '
