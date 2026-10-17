@@ -11,19 +11,6 @@ export default function Home() {
   const [copied, setCopied] = useState(false);
   const [lifestyleCanvasUrl, setLifestyleCanvasUrl] = useState<string | null>(null);
 
-  function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        const base64String = reader.result as string;
-        setSelectedImage(base64String);
-        setProductUrl('');
-      };
-      reader.readAsDataURL(file);
-    }
-  }
-
   useEffect(() => {
     if (!campaignData?.images?.heroShot) return;
 
@@ -71,59 +58,6 @@ export default function Home() {
     };
   }, [campaignData]);
 
-  async function handleGenerate() {
-    const assetInput = selectedImage || productUrl;
-    if (!assetInput) {
-      alert('Please enter a product URL or upload an image file.');
-      return;
-    }
-
-    setLoading(true);
-    setCampaignData(null);
-    setLifestyleCanvasUrl(null);
-    setActiveStep(1);
-
-    setTimeout(() => setActiveStep(2), 1500);
-    setTimeout(() => setActiveStep(3), 3500);
-    setTimeout(() => setActiveStep(4), 5500);
-
-    try {
-      const res = await fetch('/api/generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ productUrl: assetInput }),
-      });
-
-      const json = await res.json();
-
-      if (json.success && json.data) {
-        setCampaignData(json.data);
-      } else {
-        alert(json.error || 'Failed to generate campaign assets.');
-      }
-    } catch (err) {
-      console.error(err);
-      alert('Error connecting to generation server.');
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  function downloadImage(dataUrl: string, filename: string) {
-    const a = document.createElement('a');
-    a.href = dataUrl;
-    a.download = filename;
-    a.click();
-  }
-
-  function copyToClipboard() {
-    if (!campaignData?.hooks) return;
-    const textToCopy = campaignData.hooks.map((h: string, i: number) => `${i + 1}. ${h}`).join('\n');
-    navigator.clipboard.writeText(textToCopy);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  }
-
   return (
     <main className="min-h-screen bg-[#0A0D14] text-white p-8">
       <header className="flex justify-between items-center mb-10 pb-4 border-b border-gray-800">
@@ -151,7 +85,17 @@ export default function Home() {
               <input
                 type="file"
                 accept="image/*"
-                onChange={handleFileUpload}
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) {
+                    const reader = new FileReader();
+                    reader.onloadend = () => {
+                      setSelectedImage(reader.result as string);
+                      setProductUrl('');
+                    };
+                    reader.readAsDataURL(file);
+                  }
+                }}
                 className="block w-full text-xs text-gray-400 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-emerald-500/10 file:text-emerald-400 hover:file:bg-emerald-500/20 cursor-pointer bg-[#0A0D14] p-2 rounded-lg border border-gray-800"
               />
             </div>
@@ -191,7 +135,43 @@ export default function Home() {
             </div>
 
             <button
-              onClick={handleGenerate}
+              onClick={async () => {
+                const assetInput = selectedImage || productUrl;
+                if (!assetInput) {
+                  alert('Please enter a product URL or upload an image file.');
+                  return;
+                }
+
+                setLoading(true);
+                setCampaignData(null);
+                setLifestyleCanvasUrl(null);
+                setActiveStep(1);
+
+                setTimeout(() => setActiveStep(2), 1500);
+                setTimeout(() => setActiveStep(3), 3500);
+                setTimeout(() => setActiveStep(4), 5500);
+
+                try {
+                  const res = await fetch('/api/generate', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ productUrl: assetInput }),
+                  });
+
+                  const json = await res.json();
+
+                  if (json.success && json.data) {
+                    setCampaignData(json.data);
+                  } else {
+                    alert(json.error || 'Failed to generate campaign assets.');
+                  }
+                } catch (err) {
+                  console.error(err);
+                  alert('Error connecting to generation server.');
+                } finally {
+                  setLoading(false);
+                }
+              }}
               disabled={loading}
               className="w-full py-3 bg-emerald-500 hover:bg-emerald-600 font-semibold rounded-lg transition-all disabled:opacity-50 text-black mt-2"
             >
@@ -212,4 +192,45 @@ export default function Home() {
               ].map((agent, i) => (
                 <div
                   key={i}
-                  className={
+                  className={`p-3 rounded-lg border transition-all ${
+                    activeStep > i
+                      ? 'border-emerald-500/50 bg-emerald-500/5 text-white'
+                      : 'border-gray-800 bg-[#0A0D14] text-gray-500'
+                  }`}
+                >
+                  <div className="flex items-center gap-2">
+                    <span className={`w-2 h-2 rounded-full ${activeStep > i ? 'bg-emerald-400' : 'bg-gray-600'}`} />
+                    <span className="font-medium text-sm">{agent.name}</span>
+                  </div>
+                  <p className="text-xs text-gray-400 mt-1 pl-4">{agent.desc}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-[#121722] p-6 rounded-xl border border-gray-800 flex flex-col justify-between">
+          <div>
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-lg font-semibold">Campaign Creative Output</h2>
+              {campaignData && (
+                <span className="px-3 py-1 bg-emerald-500/10 text-emerald-400 text-xs rounded-full border border-emerald-500/30">
+                  Completed in 8.4s
+                </span>
+              )}
+            </div>
+
+            <div className="grid grid-cols-2 gap-4 mb-6">
+              <div className="bg-[#0A0D14] border border-gray-800 rounded-lg p-3 text-center flex flex-col justify-between items-center min-h-[260px]">
+                <span className="text-xs text-gray-400 mb-1 block font-medium">Original Asset Shot</span>
+                <div className="w-full h-40 flex items-center justify-center p-2 rounded-md my-auto">
+                  {campaignData?.images?.heroShot ? (
+                    <img src={campaignData.images.heroShot} alt="Hero Shot" className="max-h-full max-w-full object-contain rounded-md" />
+                  ) : (
+                    <p className="text-xs text-gray-600">[ Visual Generated via Nebius ]</p>
+                  )}
+                </div>
+                {campaignData?.images?.heroShot && (
+                  <button
+                    onClick={() => {
+                      const a = document
