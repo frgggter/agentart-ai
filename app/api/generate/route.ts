@@ -2,27 +2,60 @@ import { NextResponse } from 'next/server';
 
 export async function POST(req: Request) {
   try {
-    const body = await req.json();
-    const { productUrl } = body;
+    const { productUrl } = await req.json();
+    const apiKey = process.env.NEBIUS_API_KEY;
 
-    // Retorno simulado inmediato para el modo Demo del Hackathon
-    return NextResponse.json({
-      success: true,
-      data: {
-        brandStyle: 'Minimalist / Modern Athletic',
-        palette: ['#0F172A', '#10B981', '#38BDF8'],
-        hooks: [
-          'Engineered for performance. Styled for the street.',
-          'Experience the ultimate comfort with next-gen design.',
-          'Limited Edition: Upgrade your daily rotation now.'
-        ],
+    if (!apiKey) {
+      return NextResponse.json(
+        { error: 'NEBIUS_API_KEY no está configurada.' },
+        { status: 500 }
+      );
+    }
+
+    const prompt = `You are the Lead Creative Strategy Agent for AgentArt AI. 
+Analyze this product link: ${productUrl}.
+Generate 3 high-converting visual advertising hooks for a digital ad campaign.
+Return ONLY a raw JSON object with this exact structure (no markdown formatting, no codeblocks):
+{
+  "brandStyle": "Brief description of brand visual identity",
+  "palette": ["#Hex1", "#Hex2", "#Hex3"],
+  "hooks": ["Hook 1 description", "Hook 2 description", "Hook 3 description"]
+}`;
+
+    const response = await fetch('https://api.tokenfactory.nebius.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`,
       },
-      message: 'Running on Nebius Agentic Engine (Demo Mode)',
+      body: JSON.stringify({
+        model: 'nvidia/Nemotron-3_5-Lightning',
+        messages: [{ role: 'user', content: prompt }],
+        temperature: 0.6,
+      }),
     });
 
-  } catch (error) {
+    if (!response.ok) {
+      const errText = await response.text();
+      console.error('Error Nebius:', errText);
+      throw new Error(`Error Nebius (${response.status}): ${response.statusText}`);
+    }
+
+    const data = await response.json();
+    const rawContent = data.choices[0]?.message?.content || '';
+
+    const cleanJson = rawContent.replace(/```json/g, '').replace(/```/g, '').trim();
+    const parsedResult = JSON.parse(cleanJson);
+
+    return NextResponse.json({
+      success: true,
+      data: parsedResult,
+    });
+
+  } catch (error: any) {
+    console.error('Error en el flujo de agentes:', error);
     return NextResponse.json(
-      { error: 'Failed to execute multi-agent workflow' },
+      { error: error.message || 'Error al procesar la campaña con la IA' },
       { status: 500 }
     );
   }
