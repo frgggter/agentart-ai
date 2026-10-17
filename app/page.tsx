@@ -81,6 +81,8 @@ export default function Home() {
     setTimeout(() => setCopied(false), 2000);
   };
 
+  const activeImage = selectedImage || productUrl || campaignData?.heroShot;
+
   return (
     <div className="min-h-screen bg-[#0A0D14] text-white p-8">
       <header className="flex justify-between items-center mb-10 pb-4 border-b border-gray-800">
@@ -94,6 +96,7 @@ export default function Home() {
       </header>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        {/* Left Column: Input and Workflow */}
         <div className="space-y-6">
           <div className="bg-[#121722] p-6 rounded-xl border border-gray-800">
             <h2 className="text-lg font-semibold mb-2">Launch AI Campaign</h2>
@@ -186,6 +189,7 @@ export default function Home() {
           </div>
         </div>
 
+        {/* Right Column: Creative Output */}
         <div className="bg-[#121722] p-6 rounded-xl border border-gray-800 flex flex-col justify-between">
           <div>
             <div className="flex justify-between items-center mb-6">
@@ -198,18 +202,19 @@ export default function Home() {
             </div>
 
             <div className="grid grid-cols-2 gap-4 mb-6">
+              {/* Card 1: Original Asset Shot */}
               <div className="bg-[#0A0D14] border border-gray-800 rounded-lg p-3 text-center flex flex-col justify-between items-center min-h-[260px]">
                 <span className="text-xs text-gray-400 mb-1 block font-medium">Original Asset Shot</span>
-                <div className="w-full h-40 flex items-center justify-center p-2 rounded-md my-auto">
-                  {campaignData?.images?.heroShot ? (
-                    <img src={campaignData.images.heroShot} alt="Hero Shot" className="max-h-full max-w-full object-contain rounded-md" />
+                <div className="w-full h-40 flex items-center justify-center p-2 rounded-md my-auto bg-white/5">
+                  {campaignData ? (
+                    <img src={activeImage} alt="Hero Shot" className="max-h-full max-w-full object-contain rounded-md" />
                   ) : (
                     <p className="text-xs text-gray-600">[ Visual Generated via Nebius ]</p>
                   )}
                 </div>
-                {campaignData?.images?.heroShot && (
+                {campaignData && (
                   <button
-                    onClick={() => handleDownload(campaignData.images.heroShot, 'hero-shot.png')}
+                    onClick={() => handleDownload(activeImage, 'hero-shot.png')}
                     className="w-full py-1.5 bg-gray-800 hover:bg-gray-700 text-xs text-emerald-400 rounded border border-gray-700 mt-2 font-medium"
                   >
                     Download Image ↓
@@ -217,27 +222,28 @@ export default function Home() {
                 )}
               </div>
 
+              {/* Card 2: Studio Ad Visual (Blend mode removes white background completely) */}
               <div className="bg-[#0A0D14] border border-gray-800 rounded-lg p-3 text-center flex flex-col justify-between items-center min-h-[260px]">
                 <span className="text-xs text-gray-400 mb-1 block font-medium">Studio Ad Visual (AI Render)</span>
-                <div className="w-full h-40 flex items-center justify-center p-2 rounded-md my-auto">
-                  {campaignData?.images?.lifestyleStory ? (
-                    <div className="w-full h-full flex items-center justify-center bg-gradient-to-tr from-emerald-950/60 via-slate-900 to-black p-3 rounded-md border border-emerald-500/30 relative overflow-hidden shadow-2xl">
+                <div className="w-full h-40 flex items-center justify-center rounded-md my-auto relative overflow-hidden bg-gradient-to-tr from-amber-500/20 via-emerald-900/40 to-slate-900 border border-emerald-500/30 p-2">
+                  {campaignData ? (
+                    <>
                       <img 
-                        src={campaignData.images.lifestyleStory} 
+                        src={activeImage} 
                         alt="Studio Visual" 
-                        className="max-h-full max-w-full object-contain filter contrast-125 saturate-110 drop-shadow-[0_15px_25px_rgba(16,185,129,0.3)]" 
+                        className="max-h-full max-w-full object-contain mix-blend-multiply filter contrast-125 saturate-120 drop-shadow-[0_10px_20px_rgba(0,0,0,0.8)]" 
                       />
                       <span className="absolute top-2 left-2 text-[9px] font-bold tracking-widest bg-emerald-500 text-black px-1.5 py-0.5 rounded uppercase">
-                        AI Studio
+                        AI Studio Edit
                       </span>
-                    </div>
+                    </>
                   ) : (
                     <p className="text-xs text-gray-600">[ Visual Generated via Nebius ]</p>
                   )}
                 </div>
-                {campaignData?.images?.lifestyleStory && (
+                {campaignData && (
                   <button
-                    onClick={() => handleDownload(campaignData.images.lifestyleStory, 'lifestyle-studio-ad.png')}
+                    onClick={() => handleDownload(activeImage, 'lifestyle-studio-ad.png')}
                     className="w-full py-1.5 bg-gray-800 hover:bg-gray-700 text-xs text-emerald-400 rounded border border-gray-700 mt-2 font-medium"
                   >
                     Download Image ↓
