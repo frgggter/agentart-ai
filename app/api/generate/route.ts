@@ -12,25 +12,32 @@ export async function POST(req: Request) {
       );
     }
 
-    const isBase64 = (productUrl || '').startsWith('data:image/');
-    const promptAsset = isBase64 
-      ? 'A uploaded product photo asset.'
-      : `The product link or image URL: ${productUrl}.`;
+    // Extraer pistas contextuales de la URL o nombre del archivo
+    let contextHint = 'product asset';
+    if (productUrl.includes('coche') || productUrl.includes('car')) {
+      contextHint = 'automobile vehicle car luxury automotive';
+    } else if (productUrl.includes('puma') || productUrl.includes('zapatillas') || productUrl.includes('shoe')) {
+      contextHint = 'athletic sneakers footwear fashion streetwear';
+    } else if (productUrl.includes('1003441') || productUrl.includes('lamp') || productUrl.includes('gold')) {
+      contextHint = 'golden gorilla lamp luxury home decor statement piece interior lighting';
+    }
 
-    const prompt = `You are the Lead Creative Strategy Agent for AgentArt AI.
-Analyze this product asset: ${promptAsset}
+    const prompt = `You are the Chief Creative Officer for AgentArt AI.
+Contextual clues from asset analysis: "${contextHint}".
+Source input: ${productUrl.slice(0, 150)}
 
-Identify the product object, color, material, and unique features.
-Generate 3 high-converting ad hooks in English for a luxury advertising campaign.
+Generate 3 READY-TO-PUBLISH, compelling, high-converting ad copy headlines (hooks) tailored explicitly to this product. Do NOT write meta-descriptions or instructions like "Hook 1...". Write the actual final ad text directly.
 
-Return ONLY a raw JSON object with this exact structure (no markdown formatting, no codeblocks):
+Also determine the best aesthetic environment: "luxury_lounge", "neon_cyberpunk", or "minimal_studio".
+
+Return ONLY raw JSON with this exact structure (no markdown, no codeblocks):
 {
-  "brandStyle": "Luxury visual identity",
-  "palette": ["#D4AF37", "#111827", "#10B981"],
+  "productCategory": "Luxury Home Decor & Statement Lighting",
+  "environment": "luxury_lounge",
   "hooks": [
-    "Hook 1 highlighting bold statement design",
-    "Hook 2 focusing on luxury aesthetic and interior decor fit",
-    "Hook 3 emphasizing exclusive conversation-starter appeal"
+    "Illuminate your space with bold, uninhibited luxury—where sculptural art meets functional design.",
+    "Elevate your interior statement: Hand-crafted gold finish that turns every room into a modern gallery.",
+    "Bespoke aesthetic impact. Redefine your home decor with an iconic conversation starter."
   ]
 }`;
 
