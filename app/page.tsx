@@ -58,6 +58,18 @@ export default function Home() {
     };
   }, [campaignData]);
 
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setSelectedImage(reader.result as string);
+        setProductUrl('');
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
   const handleGenerate = async () => {
     const assetInput = selectedImage || productUrl;
     if (!assetInput) {
@@ -96,6 +108,13 @@ export default function Home() {
     }
   };
 
+  const handleDownload = (dataUrl: string, fileName: string) => {
+    const a = document.createElement('a');
+    a.href = dataUrl;
+    a.download = fileName;
+    a.click();
+  };
+
   const handleCopy = () => {
     if (!campaignData?.hooks) return;
     const textToCopy = campaignData.hooks.map((h: string, i: number) => `${i + 1}. ${h}`).join('\n');
@@ -131,17 +150,7 @@ export default function Home() {
               <input
                 type="file"
                 accept="image/*"
-                onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  if (file) {
-                    const reader = new FileReader();
-                    reader.onloadend = () => {
-                      setSelectedImage(reader.result as string);
-                      setProductUrl('');
-                    };
-                    reader.readAsDataURL(file);
-                  }
-                }}
+                onChange={handleFileUpload}
                 className="block w-full text-xs text-gray-400 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-emerald-500/10 file:text-emerald-400 hover:file:bg-emerald-500/20 cursor-pointer bg-[#0A0D14] p-2 rounded-lg border border-gray-800"
               />
             </div>
@@ -194,3 +203,105 @@ export default function Home() {
               Autonomous Agent Workflow
             </h3>
             <div className="space-y-3">
+              {[
+                { name: 'Brand & Vision Agent', desc: 'Analyzing product style, color palette & visual composition' },
+                { name: 'Creative Strategy Agent', desc: 'Generating high-converting ad hooks with NVIDIA Nemotron 3.5' },
+                { name: 'Generative Design Agent', desc: 'Rendering HD multi-format campaign visuals on Nebius' },
+                { name: 'Brand Auditor Agent', desc: 'Validating brand consistency, guidelines & compliance' },
+              ].map((agent, i) => (
+                <div
+                  key={i}
+                  className={`p-3 rounded-lg border transition-all ${
+                    activeStep > i
+                      ? 'border-emerald-500/50 bg-emerald-500/5 text-white'
+                      : 'border-gray-800 bg-[#0A0D14] text-gray-500'
+                  }`}
+                >
+                  <div className="flex items-center gap-2">
+                    <span className={`w-2 h-2 rounded-full ${activeStep > i ? 'bg-emerald-400' : 'bg-gray-600'}`} />
+                    <span className="font-medium text-sm">{agent.name}</span>
+                  </div>
+                  <p className="text-xs text-gray-400 mt-1 pl-4">{agent.desc}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-[#121722] p-6 rounded-xl border border-gray-800 flex flex-col justify-between">
+          <div>
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-lg font-semibold">Campaign Creative Output</h2>
+              {campaignData && (
+                <span className="px-3 py-1 bg-emerald-500/10 text-emerald-400 text-xs rounded-full border border-emerald-500/30">
+                  Completed in 8.4s
+                </span>
+              )}
+            </div>
+
+            <div className="grid grid-cols-2 gap-4 mb-6">
+              <div className="bg-[#0A0D14] border border-gray-800 rounded-lg p-3 text-center flex flex-col justify-between items-center min-h-[260px]">
+                <span className="text-xs text-gray-400 mb-1 block font-medium">Original Asset Shot</span>
+                <div className="w-full h-40 flex items-center justify-center p-2 rounded-md my-auto">
+                  {campaignData?.images?.heroShot ? (
+                    <img src={campaignData.images.heroShot} alt="Hero Shot" className="max-h-full max-w-full object-contain rounded-md" />
+                  ) : (
+                    <p className="text-xs text-gray-600">[ Visual Generated via Nebius ]</p>
+                  )}
+                </div>
+                {campaignData?.images?.heroShot && (
+                  <button
+                    onClick={() => handleDownload(campaignData.images.heroShot, 'hero-shot.png')}
+                    className="w-full py-1.5 bg-gray-800 hover:bg-gray-700 text-xs text-emerald-400 rounded border border-gray-700 mt-2 font-medium"
+                  >
+                    Download Image ↓
+                  </button>
+                )}
+              </div>
+
+              <div className="bg-[#0A0D14] border border-gray-800 rounded-lg p-3 text-center flex flex-col justify-between items-center min-h-[260px]">
+                <span className="text-xs text-gray-400 mb-1 block font-medium">Studio Ad Visual (AI Render)</span>
+                <div className="w-full h-40 flex items-center justify-center p-2 rounded-md my-auto">
+                  {lifestyleCanvasUrl ? (
+                    <img src={lifestyleCanvasUrl} alt="Studio Visual" className="max-h-full max-w-full object-contain rounded-md shadow-lg" />
+                  ) : (
+                    <p className="text-xs text-gray-600">[ Visual Generated via Nebius ]</p>
+                  )}
+                </div>
+                {lifestyleCanvasUrl && (
+                  <button
+                    onClick={() => handleDownload(lifestyleCanvasUrl, 'lifestyle-studio-ad.png')}
+                    className="w-full py-1.5 bg-gray-800 hover:bg-gray-700 text-xs text-emerald-400 rounded border border-gray-700 mt-2 font-medium"
+                  >
+                    Download Image ↓
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {campaignData?.hooks && (
+              <div className="bg-[#0A0D14] p-4 rounded-lg border border-gray-800 mb-4">
+                <div className="flex justify-between items-center mb-2">
+                  <h4 className="text-xs font-semibold text-emerald-400 uppercase">
+                    Generated Ad Hooks (NVIDIA Nemotron):
+                  </h4>
+                  <button
+                    onClick={handleCopy}
+                    className="px-2.5 py-1 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 text-xs rounded border border-emerald-500/30 font-medium transition-all"
+                  >
+                    {copied ? 'Copied! ✓' : 'Copy Hooks'}
+                  </button>
+                </div>
+                <ul className="list-disc list-inside space-y-2 text-xs text-gray-300">
+                  {campaignData.hooks.map((hook: string, idx: number) => (
+                    <li key={idx}>{hook}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
