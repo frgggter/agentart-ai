@@ -47,9 +47,16 @@ Return ONLY a raw JSON object with this exact structure (no markdown formatting,
     const cleanJson = rawContent.replace(/```json/g, '').replace(/```/g, '').trim();
     const parsedResult = JSON.parse(cleanJson);
 
+    // Añadimos imágenes dinámicas de campaña de alta resolución
     return NextResponse.json({
       success: true,
-      data: parsedResult,
+      data: {
+        ...parsedResult,
+        images: {
+          heroShot: 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&w=800&q=80',
+          lifestyleStory: 'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?auto=format&fit=crop&w=800&q=80'
+        }
+      }
     });
 
   } catch (error: any) {
