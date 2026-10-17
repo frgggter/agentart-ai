@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 
 export default function Home() {
   const [productUrl, setProductUrl] = useState('');
@@ -24,7 +24,6 @@ export default function Home() {
     }
   };
 
-  // Procesa la imagen en un Canvas de HTML5 para renderizar un escenario publicitario real
   useEffect(() => {
     if (!campaignData?.images?.heroShot) return;
 
@@ -39,7 +38,7 @@ export default function Home() {
       const ctx = canvas.getContext('2d');
       if (!ctx) return;
 
-      // Dibujar fondo de estudio de lujo con gradiente radial de iluminación
+      // Studio background gradient
       const bgGradient = ctx.createRadialGradient(400, 350, 50, 400, 400, 500);
       bgGradient.addColorStop(0, '#1F2937');
       bgGradient.addColorStop(0.5, '#111827');
@@ -47,31 +46,26 @@ export default function Home() {
       ctx.fillStyle = bgGradient;
       ctx.fillRect(0, 0, 800, 800);
 
-      // Sombra proyectada del producto en el suelo
+      // Floor shadow
       ctx.beginPath();
       ctx.ellipse(400, 680, 220, 40, 0, 0, 2 * Math.PI);
       ctx.fillStyle = 'rgba(0, 0, 0, 0.65)';
-      ctx.filter = 'blur(15px)';
       ctx.fill();
-      ctx.filter = 'none';
 
-      // Renderizar la foto del producto escalada y centrada
+      // Scaled image rendering
       const scale = Math.min(520 / img.width, 520 / img.height);
       const w = img.width * scale;
       const h = img.height * scale;
       const x = (800 - w) / 2;
-      const y = (660 - h);
+      const y = 660 - h;
 
       ctx.drawImage(img, x, y, w, h);
 
-      // Superposición de texto y badge de edición publicitaria
-      ctx.fillStyle = 'rgba(16, 185, 129, 0.15)';
-      ctx.strokeStyle = 'rgba(16, 185, 129, 0.5)';
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.roundRect(40, 40, 160, 36, 8);
-      ctx.fill();
-      ctx.stroke();
+      // Studio badge
+      ctx.fillStyle = 'rgba(16, 185, 129, 0.2)';
+      ctx.fillRect(40, 40, 160, 36);
+      ctx.strokeStyle = '#10B981';
+      ctx.strokeRect(40, 40, 160, 36);
 
       ctx.font = 'bold 13px sans-serif';
       ctx.fillStyle = '#10B981';
@@ -81,7 +75,7 @@ export default function Home() {
     };
   }, [campaignData]);
 
-  async function handleGenerate() {
+  const handleGenerate = async () => {
     const assetInput = selectedImage || productUrl;
     if (!assetInput) {
       alert('Please enter a product URL or upload an image file.');
@@ -117,7 +111,7 @@ export default function Home() {
     } finally {
       setLoading(false);
     }
-  }
+  };
 
   const downloadImage = (dataUrl: string, filename: string) => {
     const a = document.createElement('a');
@@ -147,7 +141,6 @@ export default function Home() {
       </header>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        {/* Columna Izquierda: Input y Workflow */}
         <div className="space-y-6">
           <div className="bg-[#121722] p-6 rounded-xl border border-gray-800">
             <h2 className="text-lg font-semibold mb-2">Launch AI Campaign</h2>
@@ -222,29 +215,4 @@ export default function Home() {
                 { name: 'Brand Auditor Agent', desc: 'Validating brand consistency, guidelines & compliance' },
               ].map((agent, i) => (
                 <div
-                  key={i}
-                  className={`p-3 rounded-lg border transition-all ${
-                    activeStep > i
-                      ? 'border-emerald-500/50 bg-emerald-500/5 text-white'
-                      : 'border-gray-800 bg-[#0A0D14] text-gray-500'
-                  }`}
-                >
-                  <div className="flex items-center gap-2">
-                    <span className={`w-2 h-2 rounded-full ${activeStep > i ? 'bg-emerald-400' : 'bg-gray-600'}`} />
-                    <span className="font-medium text-sm">{agent.name}</span>
-                  </div>
-                  <p className="text-xs text-gray-400 mt-1 pl-4">{agent.desc}</p>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-
-        {/* Columna Derecha: Output y Descargas */}
-        <div className="bg-[#121722] p-6 rounded-xl border border-gray-800 flex flex-col justify-between">
-          <div>
-            <div className="flex justify-between items-center mb-6">
-              <h2 className="text-lg font-semibold">Campaign Creative Output</h2>
-              {campaignData && (
-                <span className="px-3 py-1 bg-emerald-500/10 text-emerald-400 text-xs rounded-full border border-emerald-500/30">
-                  Completed in 8.
+                  key
