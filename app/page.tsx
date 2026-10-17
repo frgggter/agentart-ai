@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 
 export default function Home() {
   const [productUrl, setProductUrl] = useState('');
@@ -9,54 +9,7 @@ export default function Home() {
   const [activeStep, setActiveStep] = useState(0);
   const [campaignData, setCampaignData] = useState<any>(null);
   const [copied, setCopied] = useState(false);
-  const [lifestyleCanvasUrl, setLifestyleCanvasUrl] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!campaignData?.images?.heroShot || typeof window === 'undefined') return;
-
-    const img = new window.Image();
-    img.crossOrigin = 'anonymous';
-    img.src = campaignData.images.heroShot;
-
-    img.onload = () => {
-      const canvas = document.createElement('canvas');
-      canvas.width = 800;
-      canvas.height = 800;
-      const ctx = canvas.getContext('2d');
-      if (!ctx) return;
-
-      const bgGradient = ctx.createRadialGradient(400, 350, 50, 400, 400, 500);
-      bgGradient.addColorStop(0, '#1F2937');
-      bgGradient.addColorStop(0.5, '#111827');
-      bgGradient.addColorStop(1, '#030712');
-      ctx.fillStyle = bgGradient;
-      ctx.fillRect(0, 0, 800, 800);
-
-      ctx.beginPath();
-      ctx.ellipse(400, 680, 220, 40, 0, 0, 2 * Math.PI);
-      ctx.fillStyle = 'rgba(0, 0, 0, 0.65)';
-      ctx.fill();
-
-      const scale = Math.min(520 / img.width, 520 / img.height);
-      const w = img.width * scale;
-      const h = img.height * scale;
-      const x = (800 - w) / 2;
-      const y = 660 - h;
-
-      ctx.drawImage(img, x, y, w, h);
-
-      ctx.fillStyle = 'rgba(16, 185, 129, 0.2)';
-      ctx.fillRect(40, 40, 160, 36);
-      ctx.strokeStyle = '#10B981';
-      ctx.strokeRect(40, 40, 160, 36);
-
-      ctx.font = 'bold 13px sans-serif';
-      ctx.fillStyle = '#10B981';
-      ctx.fillText('STUDIO EDIT', 65, 63);
-
-      setLifestyleCanvasUrl(canvas.toDataURL('image/png'));
-    };
-  }, [campaignData]);
+  const [executionTime, setExecutionTime] = useState<string | null>(null);
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -77,14 +30,15 @@ export default function Home() {
       return;
     }
 
+    const startTime = Date.now();
     setLoading(true);
     setCampaignData(null);
-    setLifestyleCanvasUrl(null);
+    setExecutionTime(null);
     setActiveStep(1);
 
-    setTimeout(() => setActiveStep(2), 1500);
-    setTimeout(() => setActiveStep(3), 3500);
-    setTimeout(() => setActiveStep(4), 5500);
+    const stepInterval = setInterval(() => {
+      setActiveStep((prev) => (prev < 4 ? prev + 1 : prev));
+    }, 1200);
 
     try {
       const res = await fetch('/api/generate', {
@@ -94,9 +48,11 @@ export default function Home() {
       });
 
       const json = await res.json();
+      const duration = ((Date.now() - startTime) / 1000).toFixed(1);
 
       if (json.success && json.data) {
         setCampaignData(json.data);
+        setExecutionTime(`${duration}s`);
       } else {
         alert(json.error || 'Failed to generate campaign assets.');
       }
@@ -104,6 +60,8 @@ export default function Home() {
       console.error(err);
       alert('Error connecting to generation server.');
     } finally {
+      clearInterval(stepInterval);
+      setActiveStep(4);
       setLoading(false);
     }
   };
@@ -232,9 +190,9 @@ export default function Home() {
           <div>
             <div className="flex justify-between items-center mb-6">
               <h2 className="text-lg font-semibold">Campaign Creative Output</h2>
-              {campaignData && (
-                <span className="px-3 py-1 bg-emerald-500/10 text-emerald-400 text-xs rounded-full border border-emerald-500/30">
-                  Completed in 8.4s
+              {executionTime && (
+                <span className="px-3 py-1 bg-emerald-500/10 text-emerald-400 text-xs rounded-full border border-emerald-500/30 font-mono">
+                  Completed in {executionTime}
                 </span>
               )}
             </div>
@@ -262,15 +220,24 @@ export default function Home() {
               <div className="bg-[#0A0D14] border border-gray-800 rounded-lg p-3 text-center flex flex-col justify-between items-center min-h-[260px]">
                 <span className="text-xs text-gray-400 mb-1 block font-medium">Studio Ad Visual (AI Render)</span>
                 <div className="w-full h-40 flex items-center justify-center p-2 rounded-md my-auto">
-                  {lifestyleCanvasUrl ? (
-                    <img src={lifestyleCanvasUrl} alt="Studio Visual" className="max-h-full max-w-full object-contain rounded-md shadow-lg" />
+                  {campaignData?.images?.lifestyleStory ? (
+                    <div className="w-full h-full flex items-center justify-center bg-gradient-to-tr from-emerald-950/60 via-slate-900 to-black p-3 rounded-md border border-emerald-500/30 relative overflow-hidden shadow-2xl">
+                      <img 
+                        src={campaignData.images.lifestyleStory} 
+                        alt="Studio Visual" 
+                        className="max-h-full max-w-full object-contain filter contrast-125 saturate-110 drop-shadow-[0_15px_25px_rgba(16,185,129,0.3)]" 
+                      />
+                      <span className="absolute top-2 left-2 text-[9px] font-bold tracking-widest bg-emerald-500 text-black px-1.5 py-0.5 rounded uppercase">
+                        AI Studio
+                      </span>
+                    </div>
                   ) : (
                     <p className="text-xs text-gray-600">[ Visual Generated via Nebius ]</p>
                   )}
                 </div>
-                {lifestyleCanvasUrl && (
+                {campaignData?.images?.lifestyleStory && (
                   <button
-                    onClick={() => handleDownload(lifestyleCanvasUrl, 'lifestyle-studio-ad.png')}
+                    onClick={() => handleDownload(campaignData.images.lifestyleStory, 'lifestyle-studio-ad.png')}
                     className="w-full py-1.5 bg-gray-800 hover:bg-gray-700 text-xs text-emerald-400 rounded border border-gray-700 mt-2 font-medium"
                   >
                     Download Image ↓
