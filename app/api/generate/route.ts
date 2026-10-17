@@ -57,4 +57,24 @@ Return ONLY a raw JSON object with this exact structure (no markdown formatting,
 
     const lifestyleImage = isShoes
       ? 'https://images.unsplash.com/photo-1552346154-21d32810aba3?auto=format&fit=crop&w=800&q=80'
-      : '
+      : 'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?auto=format&fit=crop&w=800&q=80';
+
+    return NextResponse.json({
+      success: true,
+      data: {
+        ...parsedResult,
+        images: {
+          heroShot: heroImage,
+          lifestyleStory: lifestyleImage
+        }
+      }
+    });
+
+  } catch (error: any) {
+    console.error('Error en el flujo de agentes:', error);
+    return NextResponse.json(
+      { error: error.message || 'Error al procesar la campaña con la IA' },
+      { status: 500 }
+    );
+  }
+}
