@@ -12,8 +12,13 @@ export async function POST(req: Request) {
       );
     }
 
+    const isBase64 = (productUrl || '').startsWith('data:image/');
+    const promptDescription = isBase64 
+      ? 'User has uploaded a local product image file for this campaign.'
+      : `Analyze this product asset URL: ${productUrl}.`;
+
     const prompt = `You are the Lead Creative Strategy Agent for AgentArt AI.
-Analyze this product asset URL: ${productUrl}.
+${promptDescription}
 Generate 3 high-converting visual advertising hooks for a digital ad campaign.
 Return ONLY a raw JSON object with this exact structure (no markdown formatting, no codeblocks):
 {
@@ -47,8 +52,8 @@ Return ONLY a raw JSON object with this exact structure (no markdown formatting,
     const cleanJson = rawContent.replace(/```json/g, '').replace(/```/g, '').trim();
     const parsedResult = JSON.parse(cleanJson);
 
-    // If the input URL is a direct image (e.g. Puma Speedcat URL), reuse the original asset
-    const isDirectImage = /\.(jpg|jpeg|png|webp|gif)/i.test(productUrl) || productUrl.includes('/image/upload/');
+    // Si es una imagen Base64 subida o una URL directa, la usamos directamente en las tarjetas creativas
+    const isDirectImage = isBase64 || /\.(jpg|jpeg|png|webp|gif)/i.test(productUrl) || (productUrl || '').includes('/image/upload/');
     
     const heroImage = isDirectImage 
       ? productUrl 
