@@ -11,7 +11,7 @@ export default function Home() {
   const [copied, setCopied] = useState(false);
   const [lifestyleCanvasUrl, setLifestyleCanvasUrl] = useState<string | null>(null);
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (file) {
       const reader = new FileReader();
@@ -22,7 +22,7 @@ export default function Home() {
       };
       reader.readAsDataURL(file);
     }
-  };
+  }
 
   useEffect(() => {
     if (!campaignData?.images?.heroShot) return;
@@ -38,7 +38,6 @@ export default function Home() {
       const ctx = canvas.getContext('2d');
       if (!ctx) return;
 
-      // Studio background gradient
       const bgGradient = ctx.createRadialGradient(400, 350, 50, 400, 400, 500);
       bgGradient.addColorStop(0, '#1F2937');
       bgGradient.addColorStop(0.5, '#111827');
@@ -46,13 +45,11 @@ export default function Home() {
       ctx.fillStyle = bgGradient;
       ctx.fillRect(0, 0, 800, 800);
 
-      // Floor shadow
       ctx.beginPath();
       ctx.ellipse(400, 680, 220, 40, 0, 0, 2 * Math.PI);
       ctx.fillStyle = 'rgba(0, 0, 0, 0.65)';
       ctx.fill();
 
-      // Scaled image rendering
       const scale = Math.min(520 / img.width, 520 / img.height);
       const w = img.width * scale;
       const h = img.height * scale;
@@ -61,7 +58,6 @@ export default function Home() {
 
       ctx.drawImage(img, x, y, w, h);
 
-      // Studio badge
       ctx.fillStyle = 'rgba(16, 185, 129, 0.2)';
       ctx.fillRect(40, 40, 160, 36);
       ctx.strokeStyle = '#10B981';
@@ -75,7 +71,7 @@ export default function Home() {
     };
   }, [campaignData]);
 
-  const handleGenerate = async () => {
+  async function handleGenerate() {
     const assetInput = selectedImage || productUrl;
     if (!assetInput) {
       alert('Please enter a product URL or upload an image file.');
@@ -111,22 +107,22 @@ export default function Home() {
     } finally {
       setLoading(false);
     }
-  };
+  }
 
-  const downloadImage = (dataUrl: string, filename: string) => {
+  function downloadImage(dataUrl: string, filename: string) {
     const a = document.createElement('a');
     a.href = dataUrl;
     a.download = filename;
     a.click();
-  };
+  }
 
-  const copyToClipboard = () => {
+  function copyToClipboard() {
     if (!campaignData?.hooks) return;
     const textToCopy = campaignData.hooks.map((h: string, i: number) => `${i + 1}. ${h}`).join('\n');
     navigator.clipboard.writeText(textToCopy);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
-  };
+  }
 
   return (
     <main className="min-h-screen bg-[#0A0D14] text-white p-8">
@@ -215,4 +211,5 @@ export default function Home() {
                 { name: 'Brand Auditor Agent', desc: 'Validating brand consistency, guidelines & compliance' },
               ].map((agent, i) => (
                 <div
-                  key
+                  key={i}
+                  className={
