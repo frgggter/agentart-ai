@@ -20,18 +20,17 @@ export async function POST(req: Request) {
     const prompt = `You are the Lead Creative Strategy Agent for AgentArt AI.
 Analyze this product asset: ${promptAsset}
 
-Identify the specific product object, material, color, and unique design features (e.g., golden gorilla lamp, luxury decor, metallic finish, statement art).
-
-Generate 3 high-converting, highly specific ad hooks for digital marketing tailored DIRECTLY to this exact product.
+Identify the product object, color, material, and unique features.
+Generate 3 high-converting ad hooks in English for a luxury advertising campaign.
 
 Return ONLY a raw JSON object with this exact structure (no markdown formatting, no codeblocks):
 {
-  "brandStyle": "Specific description of product visual identity",
-  "palette": ["#Hex1", "#Hex2", "#Hex3"],
+  "brandStyle": "Luxury visual identity",
+  "palette": ["#D4AF37", "#111827", "#10B981"],
   "hooks": [
-    "Hook 1 focusing on specific product features and aesthetic impact",
-    "Hook 2 targeting luxury lifestyle appeal and interior design placement",
-    "Hook 3 emphasizing bold statement piece value proposition"
+    "Hook 1 highlighting bold statement design",
+    "Hook 2 focusing on luxury aesthetic and interior decor fit",
+    "Hook 3 emphasizing exclusive conversation-starter appeal"
   ]
 }`;
 
@@ -64,10 +63,8 @@ Return ONLY a raw JSON object with this exact structure (no markdown formatting,
       success: true,
       data: {
         ...parsedResult,
-        images: {
-          heroShot: productUrl,
-          lifestyleStory: productUrl
-        }
+        heroShot: productUrl,
+        lifestyleStory: productUrl
       }
     });
 
