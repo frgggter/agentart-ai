@@ -7,14 +7,17 @@ import type { ChangeEvent, CSSProperties } from 'react';
 /*  Types                                                                      */
 /* -------------------------------------------------------------------------- */
 
+type Verdict = 'approved' | 'revised' | 'skipped';
+type DownloadKind = 'original' | 'studio';
+type StudioMode = 'scene' | 'cutout';
+
 interface CampaignData {
   productCategory: string;
   environment: string;
   hooks: string[];
   contextHints: string[];
+  audit: { verdict: Verdict; notes: string[] } | null;
 }
-
-type DownloadKind = 'original' | 'studio';
 
 /* -------------------------------------------------------------------------- */
 /*  Design tokens                                                              */
@@ -28,7 +31,7 @@ const MUTED = '#8A94A8';
 const SERIF =
   '"Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif';
 
-// One light pool, used by the CSS render and by the optional baked download.
+// Light pool used by the "cutout" look, on screen and in the baked download.
 const POOL_STOPS: ReadonlyArray<readonly [number, string]> = [
   [0, '#f1e4c4'],
   [0.34, '#c9b78e'],
@@ -41,21 +44,26 @@ const POOL_CSS = `radial-gradient(ellipse 62% 58% at 50% 46%, ${POOL_STOPS.map(
 const FADE_CSS =
   'linear-gradient(to top, rgba(10,13,20,0.92) 0%, rgba(10,13,20,0) 30%), ' +
   'radial-gradient(ellipse 85% 85% at 50% 46%, rgba(10,13,20,0) 55%, rgba(10,13,20,0.7) 100%)';
+const GLOW_CSS =
+  'radial-gradient(ellipse 60% 55% at 50% 46%, rgba(241,228,196,0.22), rgba(241,228,196,0) 70%)';
 
-const STUDIO_IMAGE_STYLE: CSSProperties = {
+const CUTOUT_IMAGE_STYLE: CSSProperties = {
   mixBlendMode: 'multiply',
   filter: 'contrast(1.12) saturate(1.15)',
 };
+const AMBIENT_STYLE: CSSProperties = {
+  filter: 'blur(28px) brightness(0.35) saturate(1.4)',
+  transform: 'scale(1.25)',
+};
 
-const AGENTS: ReadonlyArray<{ name: string; job: string }> = [
-  { name: 'Brand Agent', job: 'Reads the product and its brand cues' },
-  { name: 'Strategy Agent', job: 'Chooses the angle and the audience' },
-  { name: 'Generative Design Agent', job: 'Stages the studio set' },
-  { name: 'Auditor Agent', job: 'Checks tone and unsupported claims' },
+const AGENTS: ReadonlyArray<{ id: string; name: string; job: string }> = [
+  { id: 'brand', name: 'Brand Agent', job: 'Reads the product and its brand cues' },
+  { id: 'strategy', name: 'Strategy Agent', job: 'Chooses the big idea and drafts headlines' },
+  { id: 'design', name: 'Generative Design Agent', job: 'Art-directs the studio set' },
+  { id: 'auditor', name: 'Auditor Agent', job: 'Checks claims and rewrites weak lines' },
 ];
 
 const MAX_FILE_BYTES = 10 * 1024 * 1024;
-const STEP_INTERVAL_SECONDS = 1.2;
 
 /* -------------------------------------------------------------------------- */
 /*  Helpers                                                                    */
@@ -76,7 +84,10 @@ function isHttpUrl(value: string): boolean {
 
 function toCampaignData(value: unknown): CampaignData | null {
   if (!value || typeof value !== 'object') return null;
-  const { productCategory, environment, hooks, contextHints } = value as Record<string, unknown>;
+  const { productCategory, environment, hooks, contextHints, audit } = value as Record<
+    string,
+    unknown
+  >;
   if (
     typeof productCategory !== 'string' ||
     typeof environment !== 'string' ||
@@ -86,6 +97,20 @@ function toCampaignData(value: unknown): CampaignData | null {
   }
   const cleanHooks = hooks.filter((hook): hook is string => typeof hook === 'string');
   if (cleanHooks.length === 0) return null;
+
+  let parsedAudit: CampaignData['audit'] = null;
+  if (audit && typeof audit === 'object') {
+    const { verdict, notes } = audit as Record<string, unknown>;
+    if (verdict === 'approved' || verdict === 'revised' || verdict === 'skipped') {
+      parsedAudit = {
+        verdict,
+        notes: Array.isArray(notes)
+          ? notes.filter((note): note is string => typeof note === 'string')
+          : [],
+      };
+    }
+  }
+
   return {
     productCategory,
     environment,
@@ -93,6 +118,7 @@ function toCampaignData(value: unknown): CampaignData | null {
     contextHints: Array.isArray(contextHints)
       ? contextHints.filter((hint): hint is string => typeof hint === 'string')
       : [],
+    audit: parsedAudit,
   };
 }
 
@@ -165,8 +191,7 @@ function loadImage(src: string): Promise<HTMLImageElement> {
 
 /**
  * Returns a same-origin source for the image. Uploads are already data URLs.
- * Remote images only work if the host sends CORS headers; otherwise this throws
- * and the caller falls back to opening the original in a new tab.
+ * Remote images only work if the host sends CORS headers; otherwise this throws.
  */
 async function toLocalSource(src: string): Promise<{ url: string; revoke: boolean }> {
   if (isDataUrl(src)) return { url: src, revoke: false };
@@ -177,11 +202,68 @@ async function toLocalSource(src: string): Promise<{ url: string; revoke: boolea
 }
 
 /**
- * Bakes the studio look into a PNG. This runs only when the person presses
- * Download, never while rendering, and only on same-origin pixels (uploads, or
- * remote images whose host allows CORS). The on-screen render is pure CSS.
+ * Decides whether the photo is a product on a white backdrop. Only reads pixels
+ * from same-origin sources (uploads, or hosts that allow CORS); otherwise it
+ * answers false and the person can switch the look by hand.
  */
-async function composeStudioImage(src: string): Promise<Blob> {
+async function detectWhiteBackdrop(src: string): Promise<boolean> {
+  try {
+    const local = await toLocalSource(src);
+    try {
+      const img = await loadImage(local.url);
+      const n = 48;
+      const canvas = document.createElement('canvas');
+      canvas.width = n;
+      canvas.height = n;
+      const ctx = canvas.getContext('2d', { willReadFrequently: true });
+      if (!ctx) return false;
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, n, n);
+      ctx.drawImage(img, 0, 0, n, n);
+      const { data } = ctx.getImageData(0, 0, n, n);
+
+      let total = 0;
+      let white = 0;
+      for (let y = 0; y < n; y += 1) {
+        for (let x = 0; x < n; x += 1) {
+          const onBorder = x < 2 || x >= n - 2 || y < 2 || y >= n - 2;
+          if (!onBorder) continue;
+          total += 1;
+          const i = (y * n + x) * 4;
+          if (data[i] > 232 && data[i + 1] > 232 && data[i + 2] > 232) white += 1;
+        }
+      }
+      return total > 0 && white / total > 0.9;
+    } finally {
+      if (local.revoke) URL.revokeObjectURL(local.url);
+    }
+  } catch {
+    return false;
+  }
+}
+
+function roundedRectPath(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  r: number
+): void {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
+
+/**
+ * Bakes the studio look into a PNG. This runs only when the person presses
+ * Download, never while rendering, and only on same-origin pixels.
+ */
+async function composeStudioImage(src: string, mode: StudioMode): Promise<Blob> {
   const local = await toLocalSource(src);
   try {
     const img = await loadImage(local.url);
@@ -195,26 +277,63 @@ async function composeStudioImage(src: string): Promise<Blob> {
     ctx.fillStyle = BG;
     ctx.fillRect(0, 0, size, size);
 
-    // Light pool (same ellipse as the CSS version).
-    ctx.save();
-    ctx.translate(size * 0.5, size * 0.46);
-    ctx.scale(0.62, 0.58);
-    const pool = ctx.createRadialGradient(0, 0, 0, 0, 0, size);
-    POOL_STOPS.forEach(([stop, color]) => pool.addColorStop(stop, color));
-    ctx.fillStyle = pool;
-    ctx.fillRect(-size * 2, -size * 2, size * 4, size * 4);
-    ctx.restore();
+    if (mode === 'cutout') {
+      ctx.save();
+      ctx.translate(size * 0.5, size * 0.46);
+      ctx.scale(0.62, 0.58);
+      const pool = ctx.createRadialGradient(0, 0, 0, 0, 0, size);
+      POOL_STOPS.forEach(([stop, color]) => pool.addColorStop(stop, color));
+      ctx.fillStyle = pool;
+      ctx.fillRect(-size * 2, -size * 2, size * 4, size * 4);
+      ctx.restore();
 
-    // Product, multiplied onto the light so the white box disappears.
-    const box = size * 0.8;
-    const scale = Math.min(box / img.naturalWidth, box / img.naturalHeight);
-    const width = img.naturalWidth * scale;
-    const height = img.naturalHeight * scale;
-    ctx.globalCompositeOperation = 'multiply';
-    ctx.filter = 'contrast(1.12) saturate(1.15)';
-    ctx.drawImage(img, (size - width) / 2, (size - height) / 2, width, height);
-    ctx.filter = 'none';
-    ctx.globalCompositeOperation = 'source-over';
+      const box = size * 0.8;
+      const scale = Math.min(box / img.naturalWidth, box / img.naturalHeight);
+      const width = img.naturalWidth * scale;
+      const height = img.naturalHeight * scale;
+      ctx.globalCompositeOperation = 'multiply';
+      ctx.filter = 'contrast(1.12) saturate(1.15)';
+      ctx.drawImage(img, (size - width) / 2, (size - height) / 2, width, height);
+      ctx.filter = 'none';
+      ctx.globalCompositeOperation = 'source-over';
+    } else {
+      // Ambient backdrop: a dark, blurred copy of the photo fills the frame.
+      const cover = Math.max(size / img.naturalWidth, size / img.naturalHeight) * 1.25;
+      const bw = img.naturalWidth * cover;
+      const bh = img.naturalHeight * cover;
+      ctx.filter = 'blur(28px) brightness(0.35) saturate(1.4)';
+      ctx.drawImage(img, (size - bw) / 2, (size - bh) / 2, bw, bh);
+      ctx.filter = 'none';
+
+      const glow = ctx.createRadialGradient(size * 0.5, size * 0.46, 0, size * 0.5, size * 0.46, size * 0.6);
+      glow.addColorStop(0, 'rgba(241,228,196,0.22)');
+      glow.addColorStop(1, 'rgba(241,228,196,0)');
+      ctx.fillStyle = glow;
+      ctx.fillRect(0, 0, size, size);
+
+      // The sharp photo, framed, with a soft shadow.
+      const box = size * 0.82;
+      const scale = Math.min(box / img.naturalWidth, box / img.naturalHeight);
+      const width = img.naturalWidth * scale;
+      const height = img.naturalHeight * scale;
+      const x = (size - width) / 2;
+      const y = (size - height) / 2;
+      ctx.save();
+      ctx.shadowColor = 'rgba(0,0,0,0.85)';
+      ctx.shadowBlur = 60;
+      ctx.shadowOffsetY = 30;
+      ctx.fillStyle = '#000000';
+      roundedRectPath(ctx, x, y, width, height, 14);
+      ctx.fill();
+      ctx.restore();
+
+      ctx.save();
+      roundedRectPath(ctx, x, y, width, height, 14);
+      ctx.clip();
+      ctx.filter = 'contrast(1.08) saturate(1.1)';
+      ctx.drawImage(img, x, y, width, height);
+      ctx.restore();
+    }
 
     // Floor fade and vignette.
     const floor = ctx.createLinearGradient(0, size, 0, size * 0.7);
@@ -267,34 +386,92 @@ function OriginalFrame({ src, onError }: { src: string; onError: () => void }) {
   );
 }
 
-function StudioFrame({ src, onError }: { src: string; onError: () => void }) {
+function StudioBadge() {
+  return (
+    <span
+      className="absolute left-3 top-3 rounded-full px-3 py-1 text-xs font-semibold"
+      style={{ backgroundColor: 'rgba(10,13,20,0.78)', color: GOLD, border: `1px solid ${GOLD}55` }}
+    >
+      AI Studio
+    </span>
+  );
+}
+
+function StudioFrame({
+  src,
+  mode,
+  onError,
+}: {
+  src: string;
+  mode: StudioMode;
+  onError: () => void;
+}) {
+  if (mode === 'cutout') {
+    // Multiply makes the white backdrop vanish into the light pool behind the product.
+    return (
+      <div
+        className="relative aspect-square w-full overflow-hidden rounded-xl"
+        style={{ isolation: 'isolate', backgroundColor: BG }}
+      >
+        <div aria-hidden="true" className="absolute inset-0" style={{ background: POOL_CSS }} />
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={src}
+          alt="Product staged in a dark advertising studio"
+          referrerPolicy="no-referrer"
+          decoding="async"
+          onError={onError}
+          className="absolute inset-0 h-full w-full object-contain p-[10%]"
+          style={CUTOUT_IMAGE_STYLE}
+        />
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-0"
+          style={{ background: FADE_CSS }}
+        />
+        <StudioBadge />
+      </div>
+    );
+  }
+
+  // Scene: the photo keeps its own background and sits in a dark, ambient-lit frame.
   return (
     <div
       className="relative aspect-square w-full overflow-hidden rounded-xl"
       style={{ isolation: 'isolate', backgroundColor: BG }}
     >
-      <div aria-hidden="true" className="absolute inset-0" style={{ background: POOL_CSS }} />
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
         src={src}
-        alt="Product staged in a dark advertising studio"
+        alt=""
+        aria-hidden="true"
         referrerPolicy="no-referrer"
         decoding="async"
-        onError={onError}
-        className="absolute inset-0 h-full w-full object-contain p-[10%]"
-        style={STUDIO_IMAGE_STYLE}
+        className="absolute inset-0 h-full w-full object-cover"
+        style={AMBIENT_STYLE}
       />
+      <div aria-hidden="true" className="absolute inset-0" style={{ background: GLOW_CSS }} />
+      <div className="absolute inset-[9%] flex items-center justify-center">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={src}
+          alt="Product photo in a dark advertising frame"
+          referrerPolicy="no-referrer"
+          decoding="async"
+          onError={onError}
+          className="max-h-full max-w-full rounded-[14px]"
+          style={{
+            filter: 'contrast(1.08) saturate(1.1)',
+            boxShadow: '0 30px 60px -20px rgba(0,0,0,0.9)',
+          }}
+        />
+      </div>
       <div
         aria-hidden="true"
         className="pointer-events-none absolute inset-0"
         style={{ background: FADE_CSS }}
       />
-      <span
-        className="absolute left-3 top-3 rounded-full px-3 py-1 text-xs font-semibold"
-        style={{ backgroundColor: 'rgba(10,13,20,0.78)', color: GOLD, border: `1px solid ${GOLD}55` }}
-      >
-        AI Studio
-      </span>
+      <StudioBadge />
     </div>
   );
 }
@@ -324,6 +501,7 @@ export default function Page() {
   const [productName, setProductName] = useState('');
   const [loading, setLoading] = useState(false);
   const [activeStep, setActiveStep] = useState(-1);
+  const [agentSummaries, setAgentSummaries] = useState<string[]>(['', '', '', '']);
   const [campaignData, setCampaignData] = useState<CampaignData | null>(null);
   const [copied, setCopied] = useState(false);
   const [executionTime, setExecutionTime] = useState<number | null>(null);
@@ -331,21 +509,30 @@ export default function Page() {
   const [notice, setNotice] = useState<string | null>(null);
   const [imageFailed, setImageFailed] = useState(false);
   const [downloading, setDownloading] = useState<DownloadKind | null>(null);
+  const [studioMode, setStudioMode] = useState<StudioMode>('scene');
 
   const startRef = useRef(0);
   const runningRef = useRef(false);
 
-  // Live stopwatch and agent animation while the API call is in flight.
+  // Live stopwatch while the agents are running.
   useEffect(() => {
     if (!loading) return undefined;
     const id = window.setInterval(() => {
       if (!runningRef.current) return;
-      const elapsed = (performance.now() - startRef.current) / 1000;
-      setExecutionTime(elapsed);
-      setActiveStep(Math.min(AGENTS.length - 1, Math.floor(elapsed / STEP_INTERVAL_SECONDS)));
+      setExecutionTime((performance.now() - startRef.current) / 1000);
     }, 100);
     return () => window.clearInterval(id);
   }, [loading]);
+
+  const resetResults = () => {
+    setCampaignData(null);
+    setExecutionTime(null);
+    setActiveStep(-1);
+    setAgentSummaries(['', '', '', '']);
+    setImageFailed(false);
+    setNotice(null);
+    setError(null);
+  };
 
   const handleFile = (event: ChangeEvent<HTMLInputElement>) => {
     const input = event.target;
@@ -366,15 +553,10 @@ export default function Page() {
     const reader = new FileReader();
     reader.onload = () => {
       if (typeof reader.result !== 'string') return;
+      resetResults();
       setSelectedImage(reader.result);
       setFileName(file.name);
       setProductUrl('');
-      setCampaignData(null);
-      setExecutionTime(null);
-      setActiveStep(-1);
-      setImageFailed(false);
-      setNotice(null);
-      setError(null);
     };
     reader.onerror = () => setError('That file could not be read. Try another image.');
     reader.readAsDataURL(file);
@@ -404,11 +586,8 @@ export default function Page() {
       return;
     }
 
-    setError(null);
-    setNotice(null);
+    resetResults();
     setCopied(false);
-    setImageFailed(false);
-    setCampaignData(null);
     setSelectedImage(source);
     setExecutionTime(0);
     setActiveStep(0);
@@ -416,8 +595,13 @@ export default function Page() {
     runningRef.current = true;
     setLoading(true);
 
+    // Pick the studio look while the agents work. Never blocks the pipeline.
+    void detectWhiteBackdrop(source).then((isWhite) => {
+      setStudioMode(isWhite ? 'cutout' : 'scene');
+    });
+
     try {
-      // The model works from text clues, so an upload only sends its data-URL header
+      // The agents work from text clues, so an upload only sends its data-URL header
       // (keeps the request tiny and far below Vercel's 4.5 MB body limit).
       const payloadUrl = isDataUrl(source) ? source.slice(0, source.indexOf(',') + 1) : source;
 
@@ -431,9 +615,9 @@ export default function Page() {
         }),
       });
 
-      const json: unknown = await response.json().catch(() => null);
-
-      if (!response.ok) {
+      const contentType = response.headers.get('content-type') ?? '';
+      if (!response.ok || !response.body || !contentType.includes('ndjson')) {
+        const json: unknown = await response.json().catch(() => null);
         const message =
           json && typeof json === 'object' && typeof (json as { error?: unknown }).error === 'string'
             ? (json as { error: string }).error
@@ -441,12 +625,62 @@ export default function Page() {
         throw new Error(message);
       }
 
-      const data = toCampaignData(json);
-      if (!data) throw new Error('The server returned an unexpected answer. Please try again.');
+      const outcome: { data: CampaignData | null; error: string | null } = {
+        data: null,
+        error: null,
+      };
+
+      const handleLine = (line: string) => {
+        if (!line.trim()) return;
+        let parsed: unknown;
+        try {
+          parsed = JSON.parse(line);
+        } catch {
+          return;
+        }
+        if (!parsed || typeof parsed !== 'object') return;
+        const event = parsed as Record<string, unknown>;
+        const index =
+          typeof event.agent === 'string' ? AGENTS.findIndex((a) => a.id === event.agent) : -1;
+
+        if (event.type === 'start' && index >= 0) {
+          setActiveStep(index);
+        } else if (event.type === 'done' && index >= 0) {
+          const summary = typeof event.summary === 'string' ? event.summary : '';
+          setAgentSummaries((previous) => {
+            const next = previous.slice();
+            next[index] = summary;
+            return next;
+          });
+          setActiveStep(index + 1);
+        } else if (event.type === 'result') {
+          outcome.data = toCampaignData(event.data);
+        } else if (event.type === 'error') {
+          outcome.error =
+            typeof event.message === 'string' ? event.message : 'The pipeline failed. Please try again.';
+        }
+      };
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() ?? '';
+        lines.forEach(handleLine);
+      }
+      buffer += decoder.decode();
+      handleLine(buffer);
+
+      if (outcome.error) throw new Error(outcome.error);
+      if (!outcome.data) throw new Error('The server returned an unexpected answer. Please try again.');
 
       runningRef.current = false;
       setExecutionTime((performance.now() - startRef.current) / 1000);
-      setCampaignData(data);
+      setCampaignData(outcome.data);
       setActiveStep(AGENTS.length);
     } catch (caught) {
       runningRef.current = false;
@@ -477,7 +711,7 @@ export default function Page() {
 
     try {
       if (kind === 'studio') {
-        saveBlob(await composeStudioImage(selectedImage), `${base}-studio.png`);
+        saveBlob(await composeStudioImage(selectedImage, studioMode), `${base}-studio.png`);
       } else if (isDataUrl(selectedImage)) {
         const mime = selectedImage.slice(5, selectedImage.indexOf(';'));
         triggerDownload(selectedImage, `${base}-original.${extensionFromMime(mime)}`);
@@ -500,8 +734,7 @@ export default function Page() {
   };
 
   const showOutput = selectedImage !== null && (loading || campaignData !== null);
-  const timerLabel =
-    executionTime === null ? null : `${executionTime.toFixed(2)} s`;
+  const timerLabel = executionTime === null ? null : `${executionTime.toFixed(2)} s`;
 
   const buttonBase =
     'rounded-lg px-3 py-1.5 text-xs font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D9B77A] disabled:cursor-not-allowed disabled:opacity-50';
@@ -519,8 +752,8 @@ export default function Page() {
               AgentArt AI
             </h1>
             <p className="mt-3 max-w-xl text-base leading-relaxed" style={{ color: MUTED }}>
-              Drop in a product photo. Four agents read the brand, set the strategy, stage a
-              studio shot and write the headlines.
+              Drop in a product photo. Four Nemotron agents read the brand, set the strategy,
+              art-direct a studio shot and audit the headlines before you see them.
             </p>
           </div>
           <p
@@ -602,12 +835,12 @@ export default function Page() {
                 maxLength={80}
                 value={productName}
                 onChange={(event) => setProductName(event.target.value)}
-                placeholder="e.g. Leather desk lamp"
+                placeholder="e.g. White Volkswagen Golf GTD"
                 className="w-full rounded-xl bg-transparent px-4 py-3 text-sm text-slate-100 placeholder:text-slate-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D9B77A]"
                 style={{ border: `1px solid ${LINE}` }}
               />
               <p className="mt-1.5 text-xs" style={{ color: MUTED }}>
-                The agents also read clues in the file name, such as lamp.jpg or puma-shoe.png.
+                The agents cannot see the photo. They read this name and clues in the file name.
               </p>
             </div>
 
@@ -653,9 +886,10 @@ export default function Page() {
             {AGENTS.map((agent, index) => {
               const done = activeStep > index;
               const active = activeStep === index && loading;
+              const summary = agentSummaries[index];
               return (
                 <li
-                  key={agent.name}
+                  key={agent.id}
                   className="rounded-xl p-4 transition-colors"
                   style={{
                     backgroundColor: PANEL,
@@ -676,7 +910,7 @@ export default function Page() {
                     </span>
                   </div>
                   <p className="mt-2 text-xs leading-relaxed" style={{ color: MUTED }}>
-                    {agent.job}
+                    {done && summary ? summary : agent.job}
                   </p>
                 </li>
               );
@@ -730,15 +964,48 @@ export default function Page() {
                     {downloading === 'studio' ? 'Preparing...' : 'Download Image'}
                   </button>
                 </div>
+
+                <div
+                  role="group"
+                  aria-label="Background treatment"
+                  className="mb-3 inline-flex rounded-lg p-0.5"
+                  style={{ border: `1px solid ${LINE}` }}
+                >
+                  {(
+                    [
+                      { mode: 'scene', label: 'Keep scene' },
+                      { mode: 'cutout', label: 'Remove white box' },
+                    ] as const
+                  ).map((option) => (
+                    <button
+                      key={option.mode}
+                      type="button"
+                      aria-pressed={studioMode === option.mode}
+                      onClick={() => setStudioMode(option.mode)}
+                      className="rounded-md px-3 py-1 text-xs font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D9B77A]"
+                      style={{
+                        backgroundColor: studioMode === option.mode ? LINE : 'transparent',
+                        color: studioMode === option.mode ? '#F8FAFC' : MUTED,
+                      }}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+
                 {imageFailed ? (
                   <BlockedFrame />
                 ) : (
-                  <StudioFrame src={selectedImage} onError={() => setImageFailed(true)} />
+                  <StudioFrame
+                    src={selectedImage}
+                    mode={studioMode}
+                    onError={() => setImageFailed(true)}
+                  />
                 )}
                 <p className="mt-3 text-xs leading-relaxed" style={{ color: MUTED }}>
                   {campaignData
                     ? `${campaignData.productCategory}. Scene: ${campaignData.environment}`
-                    : 'Staging the set...'}
+                    : 'Art-directing the set...'}
                 </p>
               </article>
             </div>
@@ -783,20 +1050,34 @@ export default function Page() {
               </div>
 
               {campaignData ? (
-                <ul>
-                  {campaignData.hooks.map((hook, index) => (
-                    <li
-                      key={`${index}-${hook}`}
-                      className="py-4 text-xl leading-snug text-slate-50 sm:text-2xl"
-                      style={{
-                        fontFamily: SERIF,
-                        borderTop: index === 0 ? 'none' : `1px solid ${LINE}`,
-                      }}
+                <>
+                  <ul>
+                    {campaignData.hooks.map((hook, index) => (
+                      <li
+                        key={`${index}-${hook}`}
+                        className="py-4 text-xl leading-snug text-slate-50 sm:text-2xl"
+                        style={{
+                          fontFamily: SERIF,
+                          borderTop: index === 0 ? 'none' : `1px solid ${LINE}`,
+                        }}
+                      >
+                        {hook}
+                      </li>
+                    ))}
+                  </ul>
+                  {campaignData.audit ? (
+                    <p
+                      className="mt-2 border-t pt-4 text-xs leading-relaxed"
+                      style={{ borderColor: LINE, color: MUTED }}
                     >
-                      {hook}
-                    </li>
-                  ))}
-                </ul>
+                      {campaignData.audit.verdict === 'approved'
+                        ? 'Auditor Agent approved the draft without changes.'
+                        : campaignData.audit.verdict === 'revised'
+                          ? `Auditor Agent revised the draft. ${campaignData.audit.notes.join(' ')}`
+                          : 'The Auditor Agent was unavailable, so these headlines were not reviewed.'}
+                    </p>
+                  ) : null}
+                </>
               ) : (
                 <div className="space-y-4" aria-hidden="true">
                   {[72, 58, 66].map((width) => (
