@@ -676,7 +676,11 @@ export default function Page() {
       handleLine(buffer);
 
       if (outcome.error) throw new Error(outcome.error);
-      if (!outcome.data) throw new Error('The server returned an unexpected answer. Please try again.');
+      if (!outcome.data) {
+        throw new Error(
+          'The connection closed before the agents finished, usually because the server timed out. Please try again.'
+        );
+      }
 
       runningRef.current = false;
       setExecutionTime((performance.now() - startRef.current) / 1000);
