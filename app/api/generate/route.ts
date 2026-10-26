@@ -13,7 +13,8 @@ const NEBIUS_BASE_URL = (
 ).replace(/\/+$/, '');
 const NEBIUS_MODEL = process.env.NEBIUS_MODEL || 'nvidia/Nemotron-3_5-Lightning';
 
-const CALL_TIMEOUT_MS = 15000;
+const CALL_TIMEOUT_MS = 12000;
+const PIPELINE_BUDGET_MS = 50000;
 const MAX_ATTEMPTS = 2;
 const MAX_HTTP_URL_LENGTH = 4096;
 const DATA_URL_PATTERN = /^data:image\/(png|jpe?g|webp|gif|avif|svg\+xml);base64,/i;
@@ -241,19 +242,28 @@ function buildClueBlock(context: ContextAnalysis): string {
 /*  Model call + parsing helpers                                               */
 /* -------------------------------------------------------------------------- */
 
-type ModelResult =
-  | { ok: true; content: string }
-  | { ok: false; status: number; message: string };
+interface ModelSuccess {
+  ok: true;
+  content: string;
+  reasoning: string;
+  finishReason: string;
+}
+interface ModelFailure {
+  ok: false;
+  status: number;
+  message: string;
+  detail: string;
+}
+type ModelResult = ModelSuccess | ModelFailure;
 
-function readMessageContent(data: unknown): string {
-  if (!data || typeof data !== 'object') return '';
-  const choices = (data as { choices?: unknown }).choices;
-  if (!Array.isArray(choices) || choices.length === 0) return '';
-  const message = (choices[0] as { message?: { content?: unknown } } | null)?.message;
-  const content = message?.content;
-  if (typeof content === 'string') return content;
-  if (Array.isArray(content)) {
-    return content
+// Nemotron 3 models think before answering unless told not to, which is slow and can eat the
+// whole token budget. Some deployments reject the switch, so this remembers if that happens.
+let thinkingToggleSupported = true;
+
+function toText(value: unknown): string {
+  if (typeof value === 'string') return value;
+  if (Array.isArray(value)) {
+    return value
       .map((part) => {
         if (part && typeof part === 'object') {
           const text = (part as { text?: unknown }).text;
@@ -266,31 +276,50 @@ function readMessageContent(data: unknown): string {
   return '';
 }
 
-async function callNemotron(
+function readChoice(data: unknown): { content: string; reasoning: string; finishReason: string } {
+  const empty = { content: '', reasoning: '', finishReason: '' };
+  if (!data || typeof data !== 'object') return empty;
+  const choices = (data as { choices?: unknown }).choices;
+  if (!Array.isArray(choices) || choices.length === 0) return empty;
+  const choice = choices[0] as { message?: Record<string, unknown>; finish_reason?: unknown } | null;
+  const message = choice?.message ?? {};
+  return {
+    content: toText(message.content),
+    reasoning: toText(message.reasoning_content) || toText(message.reasoning),
+    finishReason: typeof choice?.finish_reason === 'string' ? choice.finish_reason : '',
+  };
+}
+
+async function requestOnce(
   apiKey: string,
   system: string,
   user: string,
-  temperature: number
+  temperature: number,
+  timeoutMs: number,
+  disableThinking: boolean
 ): Promise<ModelResult> {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), CALL_TIMEOUT_MS);
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
+    const payload: Record<string, unknown> = {
+      model: NEBIUS_MODEL,
+      messages: [
+        { role: 'system', content: system },
+        { role: 'user', content: user },
+      ],
+      temperature,
+      max_tokens: 500,
+    };
+    if (disableThinking) payload.chat_template_kwargs = { enable_thinking: false };
+
     const response = await fetch(`${NEBIUS_BASE_URL}/chat/completions`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${apiKey}`,
       },
-      body: JSON.stringify({
-        model: NEBIUS_MODEL,
-        messages: [
-          { role: 'system', content: system },
-          { role: 'user', content: user },
-        ],
-        temperature,
-        max_tokens: 900,
-      }),
+      body: JSON.stringify(payload),
       signal: controller.signal,
     });
 
@@ -301,11 +330,12 @@ async function callNemotron(
         ok: false,
         status: response.status,
         message: `The model provider answered with status ${response.status}.`,
+        detail,
       };
     }
 
     const data: unknown = await response.json();
-    return { ok: true, content: readMessageContent(data) };
+    return { ok: true, ...readChoice(data) };
   } catch (error) {
     const timedOut = error instanceof Error && error.name === 'AbortError';
     console.error('[generate] Nebius request failed:', error);
@@ -313,10 +343,39 @@ async function callNemotron(
       ok: false,
       status: timedOut ? 504 : 502,
       message: timedOut ? 'The model took too long to answer.' : 'Could not reach the model provider.',
+      detail: '',
     };
   } finally {
     clearTimeout(timer);
   }
+}
+
+async function callNemotron(
+  apiKey: string,
+  system: string,
+  user: string,
+  temperature: number,
+  deadline: number
+): Promise<ModelResult> {
+  const timeoutMs = Math.min(CALL_TIMEOUT_MS, deadline - Date.now());
+  if (timeoutMs < 1500) {
+    return { ok: false, status: 504, message: 'The request ran out of time.', detail: '' };
+  }
+
+  const first = await requestOnce(apiKey, system, user, temperature, timeoutMs, thinkingToggleSupported);
+  if (
+    !first.ok &&
+    thinkingToggleSupported &&
+    (first.status === 400 || first.status === 422) &&
+    /template|kwargs|extra|unknown|unexpected|not permitted|unsupported/i.test(first.detail)
+  ) {
+    // The provider rejected the thinking switch: stop sending it and try again once.
+    thinkingToggleSupported = false;
+    const retryTimeout = Math.min(CALL_TIMEOUT_MS, deadline - Date.now());
+    if (retryTimeout < 1500) return first;
+    return requestOnce(apiKey, system, user, temperature, retryTimeout, false);
+  }
+  return first;
 }
 
 function extractJsonObject(text: string): unknown {
@@ -418,26 +477,50 @@ type AgentRun<T> =
   | { ok: true; value: T; ms: number }
   | { ok: false; status: number; message: string };
 
+function explainFailure(content: string, reasoning: string, finishReason: string): string {
+  if (!content.trim() && finishReason === 'length') {
+    return 'the model ran out of tokens before giving an answer';
+  }
+  if (!content.trim() && reasoning.trim()) return 'the model only returned its reasoning';
+  if (!content.trim()) return 'the model returned an empty answer';
+  return 'the answer was not valid JSON in the expected shape';
+}
+
 async function runAgent<T>(
   apiKey: string,
+  agentName: string,
   system: string,
   user: string,
-  validate: (raw: Record<string, unknown>) => T | null
+  validate: (raw: Record<string, unknown>) => T | null,
+  deadline: number
 ): Promise<AgentRun<T>> {
   const started = Date.now();
-  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt += 1) {
-    const result = await callNemotron(apiKey, system, user, attempt === 0 ? 0.7 : 0.3);
-    if (!result.ok) return { ok: false, status: result.status, message: result.message };
+  let lastReason = 'no answer';
 
-    const withoutThinking = result.content.replace(/<think>[\s\S]*?<\/think>/gi, '');
-    const parsed = extractJsonObject(withoutThinking);
-    if (parsed && typeof parsed === 'object') {
-      const value = validate(parsed as Record<string, unknown>);
-      if (value !== null) return { ok: true, value, ms: Date.now() - started };
+  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt += 1) {
+    const result = await callNemotron(apiKey, system, user, attempt === 0 ? 0.7 : 0.3, deadline);
+    if (!result.ok) {
+      return { ok: false, status: result.status, message: `${agentName}: ${result.message}` };
     }
-    console.error('[generate] An agent returned an unusable answer, attempt', attempt + 1);
+
+    // Prefer the answer; fall back to the reasoning text in case the JSON ended up there.
+    const candidates = [result.content, result.reasoning];
+    for (const candidate of candidates) {
+      const withoutThinking = candidate.replace(/<think>[\s\S]*?<\/think>/gi, '');
+      const parsed = extractJsonObject(withoutThinking);
+      if (parsed && typeof parsed === 'object') {
+        const value = validate(parsed as Record<string, unknown>);
+        if (value !== null) return { ok: true, value, ms: Date.now() - started };
+      }
+    }
+
+    lastReason = explainFailure(result.content, result.reasoning, result.finishReason);
+    console.error(
+      `[generate] ${agentName} attempt ${attempt + 1} failed (${lastReason}). finish_reason=${result.finishReason} head=${result.content.slice(0, 160).replace(/\s+/g, ' ')}`
+    );
   }
-  return { ok: false, status: 502, message: 'An agent returned an unusable answer. Please try again.' };
+
+  return { ok: false, status: 502, message: `${agentName}: ${lastReason}. Please try again.` };
 }
 
 const HOOK_RULES = [
@@ -567,6 +650,7 @@ function validateAudit(raw: Record<string, unknown>, draft: string[]): AuditRepo
 type Send = (event: Record<string, unknown>) => void;
 
 async function runPipeline(apiKey: string, context: ContextAnalysis, send: Send): Promise<void> {
+  const deadline = Date.now() + PIPELINE_BUDGET_MS;
   const start = (agent: AgentId) => send({ type: 'start', agent });
   const done = (agent: AgentId, ms: number, summary: string) =>
     send({ type: 'done', agent, ms, summary });
@@ -574,7 +658,7 @@ async function runPipeline(apiKey: string, context: ContextAnalysis, send: Send)
   // 1. Brand Agent: who is this for and how should it sound?
   start('brand');
   const brandPrep = brandPrompt(context);
-  const brand = await runAgent(apiKey, brandPrep.system, brandPrep.user, validateBrand);
+  const brand = await runAgent(apiKey, 'Brand Agent', brandPrep.system, brandPrep.user, validateBrand, deadline);
   if (!brand.ok) {
     send({ type: 'error', message: brand.message });
     return;
@@ -584,7 +668,14 @@ async function runPipeline(apiKey: string, context: ContextAnalysis, send: Send)
   // 2. Strategy Agent: one big idea and the first draft of the headlines.
   start('strategy');
   const strategyPrep = strategyPrompt(context, brand.value);
-  const strategy = await runAgent(apiKey, strategyPrep.system, strategyPrep.user, validateStrategy);
+  const strategy = await runAgent(
+    apiKey,
+    'Strategy Agent',
+    strategyPrep.system,
+    strategyPrep.user,
+    validateStrategy,
+    deadline
+  );
   if (!strategy.ok) {
     send({ type: 'error', message: strategy.message });
     return;
@@ -594,7 +685,14 @@ async function runPipeline(apiKey: string, context: ContextAnalysis, send: Send)
   // 3. Generative Design Agent: art direction for the studio set.
   start('design');
   const designPrep = designPrompt(brand.value, strategy.value);
-  const design = await runAgent(apiKey, designPrep.system, designPrep.user, validateDesign);
+  const design = await runAgent(
+    apiKey,
+    'Generative Design Agent',
+    designPrep.system,
+    designPrep.user,
+    validateDesign,
+    deadline
+  );
   const environment = design.ok ? design.value.environment : context.environment;
   done(
     'design',
@@ -606,8 +704,13 @@ async function runPipeline(apiKey: string, context: ContextAnalysis, send: Send)
   start('auditor');
   const draft = strategy.value.hooks;
   const auditorPrep = auditorPrompt(context, brand.value, draft);
-  const audit = await runAgent(apiKey, auditorPrep.system, auditorPrep.user, (raw) =>
-    validateAudit(raw, draft)
+  const audit = await runAgent(
+    apiKey,
+    'Auditor Agent',
+    auditorPrep.system,
+    auditorPrep.user,
+    (raw) => validateAudit(raw, draft),
+    deadline
   );
   const report: AuditReport = audit.ok
     ? audit.value
