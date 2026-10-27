@@ -11,12 +11,27 @@ type Verdict = 'approved' | 'revised' | 'skipped';
 type DownloadKind = 'original' | 'studio';
 type StudioMode = 'scene' | 'cutout';
 
+interface VisionInfo {
+  productName: string;
+  category: string;
+  setting: string;
+  hasWhiteBackground: boolean;
+}
+
+interface Fact {
+  text: string;
+  url: string;
+  title: string;
+}
+
 interface CampaignData {
   productCategory: string;
   environment: string;
   hooks: string[];
   contextHints: string[];
   audit: { verdict: Verdict; notes: string[] } | null;
+  vision: VisionInfo | null;
+  facts: Fact[];
 }
 
 /* -------------------------------------------------------------------------- */
@@ -57,11 +72,15 @@ const AMBIENT_STYLE: CSSProperties = {
 };
 
 const AGENTS: ReadonlyArray<{ id: string; name: string; job: string }> = [
-  { id: 'brand', name: 'Brand Agent', job: 'Reads the product and its brand cues' },
+  { id: 'vision', name: 'Vision Agent', job: 'Looks at the photo and reports what it sees' },
+  { id: 'research', name: 'Research Agent', job: 'Searches the web and keeps only citable facts' },
+  { id: 'brand', name: 'Brand Agent', job: 'Defines the audience, tone and positioning' },
   { id: 'strategy', name: 'Strategy Agent', job: 'Chooses the big idea and drafts headlines' },
   { id: 'design', name: 'Generative Design Agent', job: 'Art-directs the studio set' },
-  { id: 'auditor', name: 'Auditor Agent', job: 'Checks claims and rewrites weak lines' },
+  { id: 'auditor', name: 'Auditor Agent', job: 'Checks every claim and rewrites weak lines' },
 ];
+
+const emptySlots = (): string[] => AGENTS.map(() => '');
 
 const MAX_FILE_BYTES = 10 * 1024 * 1024;
 
@@ -84,7 +103,7 @@ function isHttpUrl(value: string): boolean {
 
 function toCampaignData(value: unknown): CampaignData | null {
   if (!value || typeof value !== 'object') return null;
-  const { productCategory, environment, hooks, contextHints, audit } = value as Record<
+  const { productCategory, environment, hooks, contextHints, audit, vision, facts } = value as Record<
     string,
     unknown
   >;
@@ -111,6 +130,34 @@ function toCampaignData(value: unknown): CampaignData | null {
     }
   }
 
+  let parsedVision: VisionInfo | null = null;
+  if (vision && typeof vision === 'object') {
+    const v = vision as Record<string, unknown>;
+    if (typeof v.productName === 'string') {
+      parsedVision = {
+        productName: v.productName,
+        category: typeof v.category === 'string' ? v.category : '',
+        setting: typeof v.setting === 'string' ? v.setting : '',
+        hasWhiteBackground: v.hasWhiteBackground === true,
+      };
+    }
+  }
+
+  const parsedFacts: Fact[] = [];
+  if (Array.isArray(facts)) {
+    for (const item of facts) {
+      if (!item || typeof item !== 'object') continue;
+      const f = item as Record<string, unknown>;
+      if (typeof f.text === 'string' && typeof f.url === 'string' && isHttpUrl(f.url)) {
+        parsedFacts.push({
+          text: f.text,
+          url: f.url,
+          title: typeof f.title === 'string' ? f.title : f.url,
+        });
+      }
+    }
+  }
+
   return {
     productCategory,
     environment,
@@ -119,6 +166,8 @@ function toCampaignData(value: unknown): CampaignData | null {
       ? contextHints.filter((hint): hint is string => typeof hint === 'string')
       : [],
     audit: parsedAudit,
+    vision: parsedVision,
+    facts: parsedFacts,
   };
 }
 
@@ -239,6 +288,30 @@ async function detectWhiteBackdrop(src: string): Promise<boolean> {
     }
   } catch {
     return false;
+  }
+}
+
+/**
+ * Shrinks an uploaded photo to a small JPEG so the Vision Agent can receive it without
+ * hitting the host's request-size limit. Uploads are same-origin, so the canvas is safe.
+ */
+async function downscaleForVision(dataUrl: string): Promise<string | null> {
+  try {
+    const img = await loadImage(dataUrl);
+    const longest = Math.max(img.naturalWidth, img.naturalHeight);
+    if (longest === 0) return null;
+    const scale = Math.min(1, 1024 / longest);
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(1, Math.round(img.naturalWidth * scale));
+    canvas.height = Math.max(1, Math.round(img.naturalHeight * scale));
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return null;
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+    return canvas.toDataURL('image/jpeg', 0.82);
+  } catch {
+    return null;
   }
 }
 
@@ -501,7 +574,8 @@ export default function Page() {
   const [productName, setProductName] = useState('');
   const [loading, setLoading] = useState(false);
   const [activeStep, setActiveStep] = useState(-1);
-  const [agentSummaries, setAgentSummaries] = useState<string[]>(['', '', '', '']);
+  const [agentSummaries, setAgentSummaries] = useState<string[]>(emptySlots);
+  const [agentStatuses, setAgentStatuses] = useState<string[]>(emptySlots);
   const [campaignData, setCampaignData] = useState<CampaignData | null>(null);
   const [copied, setCopied] = useState(false);
   const [executionTime, setExecutionTime] = useState<number | null>(null);
@@ -528,7 +602,8 @@ export default function Page() {
     setCampaignData(null);
     setExecutionTime(null);
     setActiveStep(-1);
-    setAgentSummaries(['', '', '', '']);
+    setAgentSummaries(emptySlots());
+    setAgentStatuses(emptySlots());
     setImageFailed(false);
     setNotice(null);
     setError(null);
@@ -605,11 +680,15 @@ export default function Page() {
       // (keeps the request tiny and far below Vercel's 4.5 MB body limit).
       const payloadUrl = isDataUrl(source) ? source.slice(0, source.indexOf(',') + 1) : source;
 
+      // Uploads go to the Vision Agent as a small JPEG; remote images are fetched by the provider.
+      const imageDataUrl = isDataUrl(source) ? await downscaleForVision(source) : null;
+
       const response = await fetch('/api/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           productUrl: payloadUrl,
+          imageDataUrl: imageDataUrl ?? undefined,
           fileName: fileName || undefined,
           productName: productName.trim() || undefined,
         }),
@@ -647,9 +726,15 @@ export default function Page() {
           setActiveStep(index);
         } else if (event.type === 'done' && index >= 0) {
           const summary = typeof event.summary === 'string' ? event.summary : '';
+          const status = event.status === 'skipped' ? 'skipped' : 'ok';
           setAgentSummaries((previous) => {
             const next = previous.slice();
             next[index] = summary;
+            return next;
+          });
+          setAgentStatuses((previous) => {
+            const next = previous.slice();
+            next[index] = status;
             return next;
           });
           setActiveStep(index + 1);
@@ -685,6 +770,8 @@ export default function Page() {
       runningRef.current = false;
       setExecutionTime((performance.now() - startRef.current) / 1000);
       setCampaignData(outcome.data);
+      // The Vision Agent saw the photo, so its verdict beats the pixel guess made in the browser.
+      if (outcome.data.vision) setStudioMode(outcome.data.vision.hasWhiteBackground ? 'cutout' : 'scene');
       setActiveStep(AGENTS.length);
     } catch (caught) {
       runningRef.current = false;
@@ -756,8 +843,9 @@ export default function Page() {
               AgentArt AI
             </h1>
             <p className="mt-3 max-w-xl text-base leading-relaxed" style={{ color: MUTED }}>
-              Drop in a product photo. Four Nemotron agents read the brand, set the strategy,
-              art-direct a studio shot and audit the headlines before you see them.
+              Drop in a product photo. Six Nemotron agents look at it, research the product on
+              the web, set the strategy, art-direct a studio shot and audit every claim before
+              you see it.
             </p>
           </div>
           <p
@@ -844,7 +932,7 @@ export default function Page() {
                 style={{ border: `1px solid ${LINE}` }}
               />
               <p className="mt-1.5 text-xs" style={{ color: MUTED }}>
-                The agents cannot see the photo. They read this name and clues in the file name.
+                Optional. The Vision Agent looks at the photo; a name makes the web research more precise.
               </p>
             </div>
 
@@ -886,11 +974,12 @@ export default function Page() {
                   : `Completed in ${timerLabel}`}
             </p>
           </div>
-          <ol className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <ol className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {AGENTS.map((agent, index) => {
               const done = activeStep > index;
               const active = activeStep === index && loading;
               const summary = agentSummaries[index];
+              const skipped = done && agentStatuses[index] === 'skipped';
               return (
                 <li
                   key={agent.id}
@@ -906,11 +995,11 @@ export default function Page() {
                       className={`inline-block h-2.5 w-2.5 rounded-full ${
                         active ? 'animate-pulse motion-reduce:animate-none' : ''
                       }`}
-                      style={{ backgroundColor: done || active ? GOLD : LINE }}
+                      style={{ backgroundColor: (done && !skipped) || active ? GOLD : LINE }}
                     />
                     <span className="text-sm font-medium text-slate-100">{agent.name}</span>
-                    <span className="ml-auto text-xs" style={{ color: done ? GOLD : MUTED }}>
-                      {done ? 'Done' : active ? 'Working' : 'Idle'}
+                    <span className="ml-auto text-xs" style={{ color: done && !skipped ? GOLD : MUTED }}>
+                      {skipped ? 'Skipped' : done ? 'Done' : active ? 'Working' : 'Idle'}
                     </span>
                   </div>
                   <p className="mt-2 text-xs leading-relaxed" style={{ color: MUTED }}>
@@ -1080,6 +1169,35 @@ export default function Page() {
                           ? `Auditor Agent revised the draft. ${campaignData.audit.notes.join(' ')}`
                           : 'The Auditor Agent was unavailable, so these headlines were not reviewed.'}
                     </p>
+                  ) : null}
+                  {campaignData.vision ? (
+                    <p className="mt-3 text-xs leading-relaxed" style={{ color: MUTED }}>
+                      The Vision Agent saw: {campaignData.vision.productName}
+                      {campaignData.vision.setting ? `, ${campaignData.vision.setting}` : ''}.
+                    </p>
+                  ) : null}
+                  {campaignData.facts.length > 0 ? (
+                    <div className="mt-4 border-t pt-4" style={{ borderColor: LINE }}>
+                      <h4 className="mb-2 text-xs font-medium text-slate-300">
+                        Claims checked against the web
+                      </h4>
+                      <ul className="space-y-2">
+                        {campaignData.facts.map((fact) => (
+                          <li key={`${fact.url}-${fact.text}`} className="text-xs leading-relaxed" style={{ color: MUTED }}>
+                            {fact.text}{' '}
+                            <a
+                              href={fact.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="underline underline-offset-2 hover:text-slate-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D9B77A]"
+                              style={{ color: GOLD }}
+                            >
+                              {fact.title.length > 48 ? `${fact.title.slice(0, 48)}...` : fact.title}
+                            </a>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
                   ) : null}
                 </>
               ) : (
